@@ -246,8 +246,17 @@ func (c *Client) do(method, path string, params map[string]string, body any, hea
 		for k, v := range headerOverrides {
 			req.Header.Set(k, v)
 		}
+		// PATCH: ordertogo.com gates every /m/api/* request on browser-like
+		// UA + Origin + Referer headers. The CLI's "ordertogo-pp-cli/0.1.0"
+		// returned 403 Access denied even with a valid Chrome cookie session.
 		if req.Header.Get("User-Agent") == "" {
-			req.Header.Set("User-Agent", "ordertogo-pp-cli/0.1.0")
+			req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+		}
+		if req.Header.Get("Origin") == "" && c.BaseURL != "" {
+			req.Header.Set("Origin", c.BaseURL)
+		}
+		if req.Header.Get("Referer") == "" && c.BaseURL != "" {
+			req.Header.Set("Referer", c.BaseURL+"/")
 		}
 
 		resp, err := c.HTTPClient.Do(req)

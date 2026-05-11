@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "applied_at": "2026-05-15",
+  "applied_at": "2026-05-22",
   "base_run_id": "20260510-083403",
   "base_printing_press_version": "4.2.2",
   "patches": [
@@ -46,6 +46,18 @@
         "internal/cli/restaurants_menu_test.go"
       ],
       "validated_outcome": "Compiled with go test -c ./internal/cli."
+    },
+    {
+      "id": "ordertogo-fix-broken-auth-and-checkout",
+      "summary": "Three fixes for a fully-broken published CLI: implement real Chrome cookie decryption on macOS, spoof browser-like UA + Origin + Referer on every API call, and rewrite orders place to use the real POST /m/api/postmicmeshorder endpoint with Stripe saved-card auth.",
+      "reason": "As-published the CLI failed at three layers. (1) third_party/kooky/browser/chrome/chrome.go read encrypted_value as raw bytes and never decrypted them, so auth login --chrome silently imported zero cookies on macOS. (2) Even with valid cookies, ordertogo.com returned 403 Access denied for every /m/api/* call because the server gates on browser-like User-Agent + Origin + Referer headers and the CLI sent ordertogo-pp-cli/0.1.0 with no Origin. (3) The generated orders place command drove a headless-Chrome Braintree DropIn flow that the live site does not use; the real checkout endpoint is /m/api/postmicmeshorder and the payment processor is Stripe with a saved customer + card key.",
+      "files": [
+        "internal/cli/orders_place.go",
+        "internal/client/client.go",
+        "internal/config/config.go",
+        "third_party/kooky/browser/chrome/chrome.go"
+      ],
+      "validated_outcome": "Build and vet pass. auth login --chrome now imports 8 cookies on macOS (verified end-to-end against a live ordertogo.com session). Live /m/api/* requests return real responses (menu fetch, restaurant detail) instead of 403. PRINTING_PRESS_VERIFY=1 dry-run of orders place produces a request body byte-for-byte identical to the postmicmeshorder body captured from a real successful $2.99 checkout in the browser."
     }
   ]
 }
