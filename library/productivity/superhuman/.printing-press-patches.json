@@ -79,6 +79,19 @@
       "validated_outcome": "go test ./... && go vet ./..."
     },
     {
+      "id": "snippets-backend-integration",
+      "summary": "Back snippets with Superhuman's SNIPPET-labeled backend threads instead of a local JSON store.",
+      "reason": "Superhuman snippets are stored in the UI as backend threads with a SNIPPET label, so CLI snippets should sync with the user's Superhuman account and only emit a non-destructive migration hint for older local JSON snippets.",
+      "files": [
+        "internal/cli/snippets.go",
+        "internal/cli/snippets_test.go",
+        "internal/cli/send.go",
+        "SKILL.md",
+        "README.md"
+      ],
+      "validated_outcome": "go test ./... && go vet ./..."
+    },
+    {
       "id": "pii-scrub",
       "summary": "Replace session-specific emails, Google user IDs, draft IDs, and names with example placeholders.",
       "reason": "The published library must not contain user-specific mailbox artifacts from the implementation session.",

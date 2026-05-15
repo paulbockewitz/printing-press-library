@@ -5,85 +5,263 @@ package cli
 
 import (
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mvanhorn/printing-press-library/library/productivity/superhuman/internal/auth"
 )
 
-func TestSnippetsCRUD(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+type snippetsBackendFake struct {
+	t              *testing.T
+	srv            *httptest.Server
+	listResponse   string
+	writeResponses []map[string]any
+	listRequests   []map[string]any
+}
 
-	stdout, _, err := executeCmd(t, "--json", "snippets", "create", "followup", "--subject", "Hello", "--body", "Hi {{first_name}}")
-	if err != nil {
-		t.Fatalf("snippets create: %v", err)
-	}
-	var created Snippet
-	if err := json.Unmarshal([]byte(stdout), &created); err != nil {
-		t.Fatalf("decode create: %v\n%s", err, stdout)
-	}
-	if created.Name != "followup" || created.Body != "Hi {{first_name}}" {
-		t.Fatalf("created snippet wrong: %+v", created)
-	}
+func newSnippetsBackendFake(t *testing.T, listResponse string) *snippetsBackendFake {
+	t.Helper()
+	f := &snippetsBackendFake{t: t, listResponse: listResponse}
+	f.srv = httptest.NewServer(http.HandlerFunc(f.handle))
+	t.Cleanup(f.srv.Close)
+	return f
+}
 
-	stdout, _, err = executeCmd(t, "--json", "snippets", "list")
+func (f *snippetsBackendFake) handle(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	body, _ := io.ReadAll(r.Body)
+	switch r.URL.Path {
+	case snippetsListPath:
+		var payload map[string]any
+		_ = json.Unmarshal(body, &payload)
+		f.listRequests = append(f.listRequests, payload)
+		_, _ = w.Write([]byte(f.listResponse))
+	case snippetsWritePath:
+		var payload map[string]any
+		_ = json.Unmarshal(body, &payload)
+		f.writeResponses = append(f.writeResponses, payload)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	default:
+		http.Error(w, "wrong path: "+r.URL.Path, http.StatusNotFound)
+	}
+}
+
+func withSnippetBackendConfig(t *testing.T, baseURL string) string {
+	t.Helper()
+	configPath, tokenStorePath := withConfigPath(t)
+	seedSendStore(t, tokenStorePath, "user@example.com", "gid-001")
+	writeConfigPointingAt(t, configPath, baseURL, "user@example.com")
+	return configPath
+}
+
+func snippetListJSON(snippets ...map[string]any) string {
+	data, _ := json.Marshal(map[string]any{"data": snippets})
+	return string(data)
+}
+
+func TestSnippetsListReturnsParsedBackendArray(t *testing.T) {
+	backend := newSnippetsBackendFake(t, snippetListJSON(map[string]any{
+		"id":         "msg-1",
+		"threadId":   "thread-1",
+		"name":       "intro",
+		"subject":    "Hello",
+		"body":       "Hi there",
+		"modifiedAt": "2026-05-15T10:00:00Z",
+	}))
+	configPath := withSnippetBackendConfig(t, backend.srv.URL)
+
+	stdout, _, err := executeCmd(t, "--config", configPath, "--json", "snippets", "list")
 	if err != nil {
 		t.Fatalf("snippets list: %v", err)
 	}
-	if !strings.Contains(stdout, "followup") {
-		t.Fatalf("list missing snippet: %s", stdout)
+	if len(backend.listRequests) != 1 {
+		t.Fatalf("list requests = %d want 1", len(backend.listRequests))
 	}
+	filter := backend.listRequests[0]["filter"].(map[string]any)
+	if filter["type"] != "snippet" {
+		t.Fatalf("filter type = %v want snippet", filter["type"])
+	}
+	if !strings.Contains(stdout, "intro") || !strings.Contains(stdout, "Hi there") {
+		t.Fatalf("list output missing snippet fields: %s", stdout)
+	}
+}
 
-	stdout, _, err = executeCmd(t, "--json", "snippets", "get", "followup")
+func TestSnippetsListEmptyBackendResponse(t *testing.T) {
+	backend := newSnippetsBackendFake(t, `[]`)
+	configPath := withSnippetBackendConfig(t, backend.srv.URL)
+
+	stdout, _, err := executeCmd(t, "--config", configPath, "--json", "snippets", "list")
+	if err != nil {
+		t.Fatalf("snippets list: %v", err)
+	}
+	if strings.TrimSpace(stdout) != "[]" {
+		t.Fatalf("empty list output = %q", stdout)
+	}
+}
+
+func TestSnippetsGetReturnsMatchingName(t *testing.T) {
+	backend := newSnippetsBackendFake(t, snippetListJSON(
+		map[string]any{"id": "msg-1", "threadId": "thread-1", "name": "other", "body": "no"},
+		map[string]any{"id": "msg-2", "threadId": "thread-2", "name": "foo", "subject": "S", "body": "yes"},
+	))
+	configPath := withSnippetBackendConfig(t, backend.srv.URL)
+
+	stdout, _, err := executeCmd(t, "--config", configPath, "--json", "snippets", "get", "foo")
 	if err != nil {
 		t.Fatalf("snippets get: %v", err)
 	}
-	if !strings.Contains(stdout, "Hi {{first_name}}") {
-		t.Fatalf("get missing body: %s", stdout)
+	var got Snippet
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("decode get: %v\n%s", err, stdout)
 	}
+	if got.Name != "foo" || got.ID != "msg-2" || got.Body != "yes" {
+		t.Fatalf("got snippet %+v", got)
+	}
+}
 
-	stdout, _, err = executeCmd(t, "--json", "snippets", "update", "followup", "--body", "Hello {{first_name}}")
+func TestSnippetsGetDuplicateNameUsesMostRecentWithWarning(t *testing.T) {
+	backend := newSnippetsBackendFake(t, snippetListJSON(
+		map[string]any{"id": "old", "threadId": "thread-old", "name": "foo", "body": "old", "modifiedAt": "2026-05-14T10:00:00Z"},
+		map[string]any{"id": "new", "threadId": "thread-new", "name": "foo", "body": "new", "modifiedAt": "2026-05-15T10:00:00Z"},
+	))
+	configPath := withSnippetBackendConfig(t, backend.srv.URL)
+
+	stdout, stderr, err := executeCmd(t, "--config", configPath, "--json", "snippets", "get", "foo")
+	if err != nil {
+		t.Fatalf("snippets get: %v", err)
+	}
+	if !strings.Contains(stdout, `"id": "new"`) {
+		t.Fatalf("expected newest snippet, got: %s", stdout)
+	}
+	if !strings.Contains(stderr, "multiple snippets named") {
+		t.Fatalf("expected duplicate warning, got stderr: %s", stderr)
+	}
+}
+
+func TestSnippetsGetNotFoundExitCode3(t *testing.T) {
+	backend := newSnippetsBackendFake(t, snippetListJSON(map[string]any{"id": "msg-1", "threadId": "thread-1", "name": "other", "body": "no"}))
+	configPath := withSnippetBackendConfig(t, backend.srv.URL)
+
+	_, _, err := executeCmd(t, "--config", configPath, "snippets", "get", "missing")
+	if err == nil {
+		t.Fatalf("expected not found")
+	}
+	if ExitCode(err) != 3 {
+		t.Fatalf("exit code = %d want 3 (%v)", ExitCode(err), err)
+	}
+	if !strings.Contains(err.Error(), `snippet "missing" not found`) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestSnippetsCreatePostsSnippetLabelPayload(t *testing.T) {
+	backend := newSnippetsBackendFake(t, `[]`)
+	configPath := withSnippetBackendConfig(t, backend.srv.URL)
+
+	_, _, err := executeCmd(t, "--config", configPath, "--json", "snippets", "create", "--name", "foo", "--body", "Hi")
+	if err != nil {
+		t.Fatalf("snippets create: %v", err)
+	}
+	if len(backend.writeResponses) != 1 {
+		t.Fatalf("write requests = %d want 1", len(backend.writeResponses))
+	}
+	value := firstSnippetWriteValue(t, backend.writeResponses[0])
+	labels := value["labelIds"].([]any)
+	if labels[0] != "SNIPPET" {
+		t.Fatalf("labelIds = %v want SNIPPET", labels)
+	}
+	if value["name"] != "foo" {
+		t.Fatalf("name = %v want foo", value["name"])
+	}
+	if !strings.Contains(value["body"].(string), "Hi") {
+		t.Fatalf("body = %v", value["body"])
+	}
+}
+
+func TestSnippetsUpdatePreservesBackendIDs(t *testing.T) {
+	backend := newSnippetsBackendFake(t, snippetListJSON(map[string]any{
+		"id":       "msg-1",
+		"threadId": "thread-1",
+		"path":     "users/gid-001/threads/thread-1/messages/msg-1/draft",
+		"name":     "foo",
+		"subject":  "S",
+		"body":     "Hi",
+	}))
+	configPath := withSnippetBackendConfig(t, backend.srv.URL)
+
+	_, _, err := executeCmd(t, "--config", configPath, "--json", "snippets", "update", "foo", "--body", "Hello")
 	if err != nil {
 		t.Fatalf("snippets update: %v", err)
 	}
-	if !strings.Contains(stdout, "Hello {{first_name}}") {
-		t.Fatalf("update missing body: %s", stdout)
+	value := firstSnippetWriteValue(t, backend.writeResponses[0])
+	if value["id"] != "msg-1" || value["threadId"] != "thread-1" {
+		t.Fatalf("ids not preserved: %v", value)
 	}
+	if !strings.Contains(value["body"].(string), "Hello") {
+		t.Fatalf("body not updated: %v", value["body"])
+	}
+}
 
-	stdout, _, err = executeCmd(t, "--json", "snippets", "delete", "followup")
+func TestSnippetsDeletePostsTrashLabel(t *testing.T) {
+	backend := newSnippetsBackendFake(t, snippetListJSON(map[string]any{
+		"id":       "msg-1",
+		"threadId": "thread-1",
+		"name":     "foo",
+		"body":     "Hi",
+	}))
+	configPath := withSnippetBackendConfig(t, backend.srv.URL)
+
+	_, _, err := executeCmd(t, "--config", configPath, "--json", "snippets", "delete", "foo")
 	if err != nil {
 		t.Fatalf("snippets delete: %v", err)
 	}
-	if !strings.Contains(stdout, "followup") {
-		t.Fatalf("delete output wrong: %s", stdout)
-	}
-
-	_, _, err = executeCmd(t, "snippets", "get", "followup")
-	if err == nil {
-		t.Fatalf("expected not found after delete")
+	value := firstSnippetWriteValue(t, backend.writeResponses[0])
+	labels := value["labelIds"].([]any)
+	if labels[0] != "TRASH" {
+		t.Fatalf("labelIds = %v want TRASH", labels)
 	}
 }
 
-func TestApplySnippetVars(t *testing.T) {
-	got, err := applySnippetVars("Hi {{first_name}} from {{company}}", []string{"first_name=Alice", "company=Example"})
+func TestSendDryRunSnippetUsesBackendBody(t *testing.T) {
+	backend := newSnippetsBackendFake(t, snippetListJSON(map[string]any{
+		"id":       "msg-1",
+		"threadId": "thread-1",
+		"name":     "intro",
+		"body":     "Hi from backend",
+	}))
+	configPath := withSnippetBackendConfig(t, backend.srv.URL)
+
+	stdout, _, err := executeCmd(t,
+		"--config", configPath,
+		"--dry-run",
+		"send",
+		"--to", "alice@example.com",
+		"--subject", "intro",
+		"--from", "user@example.com",
+		"--snippet", "intro",
+	)
 	if err != nil {
-		t.Fatalf("applySnippetVars: %v", err)
+		t.Fatalf("send --snippet dry-run: %v", err)
 	}
-	if got != "Hi Alice from Example" {
-		t.Fatalf("got %q", got)
-	}
-	if _, err := applySnippetVars("Hi", []string{"bad"}); err == nil {
-		t.Fatalf("expected invalid --var error")
+	if !strings.Contains(stdout, "Hi from backend") {
+		t.Fatalf("snippet body not in dry-run payload: %s", stdout)
 	}
 }
 
-func TestSendDryRunSnippet(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	configPath, tokenStorePath := withConfigPath(t)
-	seedSendStore(t, tokenStorePath, "user@example.com", "1234567890123456789")
-	writeConfigPointingAt(t, configPath, "http://unused", "user@example.com")
+func TestSendDryRunSnippetVarsSubstitute(t *testing.T) {
+	backend := newSnippetsBackendFake(t, snippetListJSON(map[string]any{
+		"id":       "msg-1",
+		"threadId": "thread-1",
+		"name":     "intro",
+		"body":     "Hi {{first_name}}",
+	}))
+	configPath := withSnippetBackendConfig(t, backend.srv.URL)
 
-	if _, _, err := executeCmd(t, "--json", "snippets", "create", "intro", "--body", "Hi {{first_name}}"); err != nil {
-		t.Fatalf("seed snippet: %v", err)
-	}
 	stdout, _, err := executeCmd(t,
 		"--config", configPath,
 		"--dry-run",
@@ -98,6 +276,154 @@ func TestSendDryRunSnippet(t *testing.T) {
 		t.Fatalf("send --snippet dry-run: %v", err)
 	}
 	if !strings.Contains(stdout, "Hi Alice") {
-		t.Fatalf("snippet body not substituted into dry-run payload: %s", stdout)
+		t.Fatalf("snippet variable not substituted: %s", stdout)
+	}
+}
+
+func TestSendSnippetNotFoundSurfacesBackendLookupError(t *testing.T) {
+	backend := newSnippetsBackendFake(t, `[]`)
+	configPath := withSnippetBackendConfig(t, backend.srv.URL)
+
+	_, _, err := executeCmd(t,
+		"--config", configPath,
+		"--dry-run",
+		"send",
+		"--to", "alice@example.com",
+		"--subject", "intro",
+		"--from", "user@example.com",
+		"--snippet", "missing",
+	)
+	if err == nil {
+		t.Fatalf("expected missing snippet error")
+	}
+	if !strings.Contains(err.Error(), `snippet "missing" not found`) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestSnippetMigrationHintFirstListCreatesMarker(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	localDir := filepath.Join(home, localSnippetMigrationStateSubdir)
+	if err := os.MkdirAll(localDir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	localPath := filepath.Join(localDir, localSnippetFilename)
+	if err := os.WriteFile(localPath, []byte(`{"snippets":{"old":{"name":"old","body":"Hi"}}}`), 0o600); err != nil {
+		t.Fatalf("write local snippets: %v", err)
+	}
+	before, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatalf("read local before: %v", err)
+	}
+	backend := newSnippetsBackendFake(t, `[]`)
+	configPath := withSnippetBackendConfig(t, backend.srv.URL)
+
+	_, stderr, err := executeCmd(t, "--config", configPath, "--json", "snippets", "list")
+	if err != nil {
+		t.Fatalf("snippets list: %v", err)
+	}
+	if !strings.Contains(stderr, "Found local snippets at") {
+		t.Fatalf("expected migration hint, got stderr: %s", stderr)
+	}
+	if _, err := os.Stat(filepath.Join(localDir, localSnippetMigrationMarkerName)); err != nil {
+		t.Fatalf("marker not created: %v", err)
+	}
+	after, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatalf("read local after: %v", err)
+	}
+	if string(before) != string(after) {
+		t.Fatalf("local snippets file changed")
+	}
+}
+
+func TestSnippetMigrationHintSubsequentListDoesNotEmit(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	localDir := filepath.Join(home, localSnippetMigrationStateSubdir)
+	if err := os.MkdirAll(localDir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(localDir, localSnippetFilename), []byte(`{"snippets":{"old":{"name":"old","body":"Hi"}}}`), 0o600); err != nil {
+		t.Fatalf("write local snippets: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(localDir, localSnippetMigrationMarkerName), nil, 0o600); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+	backend := newSnippetsBackendFake(t, `[]`)
+	configPath := withSnippetBackendConfig(t, backend.srv.URL)
+
+	_, stderr, err := executeCmd(t, "--config", configPath, "--json", "snippets", "list")
+	if err != nil {
+		t.Fatalf("snippets list: %v", err)
+	}
+	if strings.Contains(stderr, "Found local snippets") {
+		t.Fatalf("did not expect migration hint, got stderr: %s", stderr)
+	}
+}
+
+func TestSnippetMigrationHintAbsentFileNoMarker(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	backend := newSnippetsBackendFake(t, `[]`)
+	configPath := withSnippetBackendConfig(t, backend.srv.URL)
+
+	_, stderr, err := executeCmd(t, "--config", configPath, "--json", "snippets", "list")
+	if err != nil {
+		t.Fatalf("snippets list: %v", err)
+	}
+	if stderr != "" {
+		t.Fatalf("unexpected stderr: %s", stderr)
+	}
+	if _, err := os.Stat(filepath.Join(home, localSnippetMigrationStateSubdir, localSnippetMigrationMarkerName)); !os.IsNotExist(err) {
+		t.Fatalf("marker should not exist when local file absent, stat err: %v", err)
+	}
+}
+
+func TestSnippetsBackend401SurfacesChromeAuthHint(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"code":401}`, http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	configPath, tokenStorePath := withConfigPath(t)
+	seedSendStore(t, tokenStorePath, "user@example.com", "gid-001")
+	store := auth.NewStoreAt(tokenStorePath)
+	acct, ok, err := store.Get("user@example.com")
+	if err != nil || !ok {
+		t.Fatalf("load seeded account: ok=%v err=%v", ok, err)
+	}
+	acct.RefreshToken = ""
+	if _, err := store.Upsert("user@example.com", acct); err != nil {
+		t.Fatalf("update seeded account: %v", err)
+	}
+	writeConfigPointingAt(t, configPath, srv.URL, "user@example.com")
+
+	_, _, err = executeCmd(t, "--config", configPath, "snippets", "list")
+	if err == nil {
+		t.Fatalf("expected 401 error")
+	}
+	if !strings.Contains(err.Error(), "auth login --chrome") {
+		t.Fatalf("expected auth login --chrome hint, got: %v", err)
+	}
+}
+
+func firstSnippetWriteValue(t *testing.T, payload map[string]any) map[string]any {
+	t.Helper()
+	writes := payload["writes"].([]any)
+	first := writes[0].(map[string]any)
+	return first["value"].(map[string]any)
+}
+
+func TestApplySnippetVars(t *testing.T) {
+	got, err := applySnippetVars("Hi {{first_name}} from {{company}}", []string{"first_name=Alice", "company=Example"})
+	if err != nil {
+		t.Fatalf("applySnippetVars: %v", err)
+	}
+	if got != "Hi Alice from Example" {
+		t.Fatalf("got %q", got)
+	}
+	if _, err := applySnippetVars("Hi", []string{"bad"}); err == nil {
+		t.Fatalf("expected invalid --var error")
 	}
 }

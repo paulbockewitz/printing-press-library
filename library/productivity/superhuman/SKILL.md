@@ -95,11 +95,11 @@ These capabilities aren't available in any other tool for this API.
 
 - `superhuman-pp-cli send` — Send a real email through Superhuman's backend
 
-**snippets** — Reusable local email snippets
+**snippets** — Reusable Superhuman UI snippets
 
 - `superhuman-pp-cli snippets list` — List saved snippets
 - `superhuman-pp-cli snippets get <name>` — Show a snippet
-- `superhuman-pp-cli snippets create <name>` — Create a snippet
+- `superhuman-pp-cli snippets create --name <name>` — Create a snippet
 - `superhuman-pp-cli snippets update <name>` — Update a snippet
 - `superhuman-pp-cli snippets delete <name>` — Delete a snippet
 
@@ -188,6 +188,8 @@ superhuman-pp-cli send --to teammate@example.com --snippet intro --var name=Alic
 ```
 
 Create or update snippets with `superhuman-pp-cli snippets create` / `superhuman-pp-cli snippets update`. Snippet variables are plain `{{key}}` text replacements. They are not Go templates and do not execute logic.
+
+Snippets sync with Superhuman's Snippets folder. If an older CLI left local snippets in `~/.superhuman-pp-cli/snippets.json`, the first `snippets list` prints a one-time migration hint. The CLI never auto-uploads, modifies, or deletes that local file.
 
 ### Search messages and correlate participants
 

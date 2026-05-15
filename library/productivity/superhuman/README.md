@@ -172,11 +172,11 @@ Send, schedule, and attach follow-up reminders
 
 ### snippets
 
-Reusable local email snippets
+Reusable Superhuman UI snippets
 
 - **`superhuman-pp-cli snippets list`** - List saved snippets
 - **`superhuman-pp-cli snippets get <name>`** - Show a snippet
-- **`superhuman-pp-cli snippets create <name>`** - Create a snippet
+- **`superhuman-pp-cli snippets create --name <name>`** - Create a snippet
 - **`superhuman-pp-cli snippets update <name>`** - Update a snippet
 - **`superhuman-pp-cli snippets delete <name>`** - Delete a snippet
 
@@ -230,7 +230,7 @@ superhuman-pp-cli threads list --label IMPORTANT --participants-file people.txt 
 superhuman-pp-cli awaiting-reply --min-age 4h --external-only --json
 
 # Reuse snippets with plain {{key}} replacement
-superhuman-pp-cli snippets create intro --subject "Intro" --body "Hi {{name}},"
+superhuman-pp-cli snippets create --name intro --subject "Intro" --body "Hi {{name}},"
 superhuman-pp-cli send --to teammate@example.com --snippet intro --var name=Alice
 
 # Schedule delivery or add a conditional follow-up reminder
@@ -246,7 +246,9 @@ superhuman-pp-cli watch --once --json
 
 ## Migrating From Pre-Overhaul
 
-Existing commands and flags continue to work. The overhaul adds automatic bootstrap/refresh behavior, durable auth diagnostics, response-envelope controls, direct `send`, local snippets, participant analytics, Gmail search passthrough, RFC822 lookup, and watch streams. Use `--no-refresh` or `--envelope off` when a script needs the older no-refresh/raw-output behavior.
+Existing commands and flags continue to work. The overhaul adds automatic bootstrap/refresh behavior, durable auth diagnostics, response-envelope controls, direct `send`, Superhuman-synced snippets, participant analytics, Gmail search passthrough, RFC822 lookup, and watch streams. Use `--no-refresh` or `--envelope off` when a script needs the older no-refresh/raw-output behavior.
+
+Older pre-backend builds stored snippets at `~/.superhuman-pp-cli/snippets.json`. The first `snippets list` after upgrading prints a one-time migration hint if that local file exists and is non-empty. The CLI never auto-uploads, modifies, or deletes that file; recreate any snippets you still need with `snippets create --name <n> --body <b>`.
 
 
 ## Output Formats

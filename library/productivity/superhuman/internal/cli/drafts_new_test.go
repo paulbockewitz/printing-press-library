@@ -94,13 +94,15 @@ func TestDraftsNewBackendCallShape(t *testing.T) {
 }
 
 func TestDraftsNewSnippetBody(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	backend := newSnippetsBackendFake(t, snippetListJSON(map[string]any{
+		"id":       "msg-1",
+		"threadId": "thread-1",
+		"name":     "intro",
+		"body":     "Hi {{first_name}}",
+	}))
 	configPath, tokenStorePath := withConfigPath(t)
 	seedSendStore(t, tokenStorePath, "user@example.com", "1234567890123456789")
-	writeConfigPointingAt(t, configPath, "http://unused", "user@example.com")
-	if _, _, err := executeCmd(t, "--json", "snippets", "create", "intro", "--body", "Hi {{first_name}}"); err != nil {
-		t.Fatalf("seed snippet: %v", err)
-	}
+	writeConfigPointingAt(t, configPath, backend.srv.URL, "user@example.com")
 	stdout, _, err := executeCmd(t,
 		"--config", configPath,
 		"--dry-run",

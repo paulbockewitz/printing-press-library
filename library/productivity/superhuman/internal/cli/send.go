@@ -37,6 +37,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -335,7 +336,7 @@ func runSend(cmd *cobra.Command, flags *rootFlags, a sendCmdArgs) error {
 	if a.Subject == "" {
 		return usageErr(fmt.Errorf("send: --subject required"))
 	}
-	bodyText, err := resolveSendBodyOrSnippet(cmd, a)
+	bodyText, err := resolveSendBodyOrSnippetWithFlags(cmd, flags, a)
 	if err != nil {
 		return usageErr(err)
 	}
@@ -486,6 +487,13 @@ func runCancelSchedule(cmd *cobra.Command, flags *rootFlags, draftID string) err
 }
 
 func resolveSendBodyOrSnippet(cmd *cobra.Command, a sendCmdArgs) (string, error) {
+	return resolveSendBodyOrSnippetWithFlags(cmd, rootFlagsFromCommand(cmd), a)
+}
+
+// PATCH(U4): --snippet now resolves through Superhuman's backend SNIPPET
+// thread list instead of ~/.superhuman-pp-cli/snippets.json, then keeps the
+// existing client-side {{key}} substitution behavior.
+func resolveSendBodyOrSnippetWithFlags(cmd *cobra.Command, flags *rootFlags, a sendCmdArgs) (string, error) {
 	if a.Snippet == "" {
 		if len(a.Vars) > 0 {
 			return "", fmt.Errorf("send: --var requires --snippet")
@@ -505,11 +513,37 @@ func resolveSendBodyOrSnippet(cmd *cobra.Command, a sendCmdArgs) (string, error)
 	if set > 0 {
 		return "", fmt.Errorf("send: --snippet is mutually exclusive with --body, --body-file, and --body-stdin")
 	}
-	body, err := resolveSnippetBody(a.Snippet, a.Vars)
+	body, err := resolveSnippetBody(cmd, flags, a.Snippet, a.Vars)
 	if err != nil {
 		return "", err
 	}
 	return body, nil
+}
+
+func rootFlagsFromCommand(cmd *cobra.Command) *rootFlags {
+	flags := &rootFlags{}
+	root := cmd.Root()
+	if root == nil {
+		return flags
+	}
+	pflags := root.PersistentFlags()
+	if flag := pflags.Lookup("config"); flag != nil {
+		flags.configPath = flag.Value.String()
+	}
+	if flag := pflags.Lookup("account"); flag != nil {
+		flags.account = flag.Value.String()
+	}
+	if flag := pflags.Lookup("timeout"); flag != nil {
+		if d, err := time.ParseDuration(flag.Value.String()); err == nil {
+			flags.timeout = d
+		}
+	}
+	if flag := pflags.Lookup("rate-limit"); flag != nil {
+		if rate, err := strconv.ParseFloat(flag.Value.String(), 64); err == nil {
+			flags.rateLimit = rate
+		}
+	}
+	return flags
 }
 
 // resolveSendBody picks the body source per the priority bodyStdin > bodyFile
