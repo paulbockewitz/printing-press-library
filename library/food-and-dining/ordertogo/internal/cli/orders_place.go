@@ -76,10 +76,17 @@ type postOrderBody struct {
 // localStorageCart matches the shape ordertogo.com persists in
 // localStorage under key order.rest{slug}{restid} — see
 // /javascripts/miyu_c/order.m.togo.js: saveCart.
+//
+// PATCH(localstorage-item-id-mapping): the int `id` field is the menu-item id
+// the POST /m/api/postmicmeshorder body wants (mapped to cartItem.ItemID).
+// localStorage carries a parallel string "item_id" key that ordertogo.com's
+// own web checkout silently ignores — verified against a real successful
+// $2.99 order whose captured request body matched ours byte-for-byte using
+// `id`, not "item_id". The string key is intentionally NOT modeled here to
+// remove the ambiguity (greptile P1 on PR #471).
 type localStorageCart struct {
 	Items []struct {
 		ID            int      `json:"id"`
-		ItemID        string   `json:"item_id"`
 		Name          string   `json:"name"`
 		Price         float64  `json:"price"`
 		OptionsStr    string   `json:"optionsstr"`

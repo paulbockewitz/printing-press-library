@@ -124,7 +124,16 @@ func (d *cookieDecrypter) decrypt(encrypted []byte, hostKey string) (string, err
 		return "", fmt.Errorf("encrypted value too short")
 	}
 	prefix := string(encrypted[:3])
-	if prefix != "v10" && prefix != "v11" {
+	// PATCH(chrome-drop-v11-prefix): only `v10` is the legitimate AES-128-CBC
+	// prefix on macOS/Linux. `v11` is the Windows App-Bound Encryption marker
+	// (AES-256-GCM with a per-cookie nonce + tag — a completely different
+	// cipher), so accepting it here and decrypting as v10 would produce
+	// garbage. If a future Chrome release ever emits a non-v10 prefix on
+	// macOS/Linux we want a clear error, not silent corruption.
+	if prefix != "v10" {
+		if prefix == "v11" {
+			return "", fmt.Errorf("Chrome v11 (App-Bound Encryption) cookies are not decryptable on %s with this AES-128-CBC path; this prefix is Windows-only", runtime.GOOS)
+		}
 		return "", fmt.Errorf("unsupported encryption version %q", prefix)
 	}
 	ciphertext := encrypted[3:]

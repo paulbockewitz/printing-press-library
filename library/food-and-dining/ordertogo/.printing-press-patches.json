@@ -81,6 +81,26 @@
         "internal/cli/orders_place.go"
       ],
       "validated_outcome": "Build, vet pass. PRINTING_PRESS_VERIFY=1 dry-run now redacts all six PII fields (customername, customerphone, paymentCard.firstname/lastname/phonenum, st_cus_id) and DefaultCardMap. Response parser captures order.orderToken so postOrderResult.TrackURL is populated for downstream tooling."
+    },
+    {
+      "id": "localstorage-item-id-mapping",
+      "applied_at": "2026-05-15",
+      "summary": "Drop the dead `item_id` string field from the localStorageCart shape and document why the int `id` is the menu-item id the postmicmeshorder body wants.",
+      "reason": "Greptile P1 (PR #471): localStorageCart.Items[] had both `id int` and `item_id string`, but only `id` was mapped into cartItem.ItemID, leaving the string field as a silent dead member. Greptile correctly flagged the ambiguity. The byte-for-byte validation against a captured real $2.99 checkout confirmed `id` is what the API wants; removing the string field eliminates the ambiguity for future readers.",
+      "files": [
+        "internal/cli/orders_place.go"
+      ],
+      "validated_outcome": "Build, vet pass. Request body remains byte-for-byte identical to the captured real checkout body. PRINTING_PRESS_VERIFY=1 dry-run unchanged."
+    },
+    {
+      "id": "chrome-drop-v11-prefix",
+      "applied_at": "2026-05-15",
+      "summary": "Reject the `v11` Chrome cookie prefix on macOS/Linux instead of decrypting it as AES-128-CBC and emitting garbage.",
+      "reason": "Greptile P2 (PR #471): `v11` is the Windows App-Bound Encryption marker (AES-256-GCM with per-cookie nonce + tag), not a macOS/Linux variant of AES-128-CBC. The previous check accepted both `v10` and `v11` and ran AES-128-CBC on the v11 ciphertext, which would silently fail PKCS#7 validation or produce garbled output if Chrome ever started emitting v11 cookies on macOS/Linux.",
+      "files": [
+        "third_party/kooky/browser/chrome/chrome.go"
+      ],
+      "validated_outcome": "Build, vet pass. The kooky chrome decrypter now returns a specific 'App-Bound Encryption is Windows-only' error if it ever sees `v11` on macOS/Linux, with the runtime.GOOS in the message."
     }
   ]
 }
