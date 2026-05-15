@@ -1,0 +1,271 @@
+{
+  "api_name": "superhuman",
+  "base_url": "https://mail.superhuman.com/~backend",
+  "description": "Read, draft, and respond to Superhuman email from your terminal or Claude Code. Durable Chrome-session auth, local SQLite store, agent-native I/O.",
+  "mcp_ready": "full",
+  "http_transport": "standard",
+  "auth": {
+    "type": "bearer_token",
+    "header": "Authorization",
+    "format": "Bearer {SUPERHUMAN_JWT}",
+    "in": "header",
+    "env_vars": [
+      "SUPERHUMAN_JWT"
+    ],
+    "env_var_specs": [
+      {
+        "name": "SUPERHUMAN_JWT",
+        "kind": "per_call",
+        "required": true,
+        "sensitive": true,
+        "inferred": true
+      }
+    ]
+  },
+  "required_headers": [
+    {
+      "name": "Content-Type",
+      "value": "text/plain;charset=UTF-8"
+    }
+  ],
+  "tools": [
+    {
+      "name": "ai_ask",
+      "description": "Ask AI semantic search (SSE stream). Required: query. Returns the new AIResponse.",
+      "method": "POST",
+      "path": "/v3/ai.askAIProxy",
+      "params": [
+        {
+          "name": "query",
+          "type": "string",
+          "location": "body",
+          "description": "Natural-language query",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "attachments_upload",
+      "description": "Upload an attachment for a draft. Required: draft_message_id, thread_id, content_type, content. Returns the new UploadResult.",
+      "method": "POST",
+      "path": "/v3/attachments.upload",
+      "params": [
+        {
+          "name": "draft_message_id",
+          "type": "string",
+          "location": "body",
+          "description": "Draft to attach to",
+          "required": true
+        },
+        {
+          "name": "thread_id",
+          "type": "string",
+          "location": "body",
+          "description": "Thread ID",
+          "required": true
+        },
+        {
+          "name": "content_type",
+          "type": "string",
+          "location": "body",
+          "description": "MIME type",
+          "required": true
+        },
+        {
+          "name": "content",
+          "type": "string",
+          "location": "body",
+          "description": "Base64-encoded content",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "drafts_list",
+      "description": "List drafts. Optional: limit (default: 50). Returns array of Draft.",
+      "method": "POST",
+      "path": "/v3/userdata.getThreads",
+      "params": [
+        {
+          "name": "limit",
+          "type": "int",
+          "location": "body",
+          "description": "Max drafts"
+        }
+      ]
+    },
+    {
+      "name": "drafts_write",
+      "description": "Create or update a draft (write to draft path). Required: thread_id, draft_id. Optional: subject, body, to (plus 2 more). Returns the new WriteResult.",
+      "method": "POST",
+      "path": "/v3/userdata.writeMessage",
+      "params": [
+        {
+          "name": "thread_id",
+          "type": "string",
+          "location": "body",
+          "description": "Thread ID",
+          "required": true
+        },
+        {
+          "name": "draft_id",
+          "type": "string",
+          "location": "body",
+          "description": "Draft ID (draft00 + 14 hex)",
+          "required": true
+        },
+        {
+          "name": "subject",
+          "type": "string",
+          "location": "body",
+          "description": "Subject"
+        },
+        {
+          "name": "body",
+          "type": "string",
+          "location": "body",
+          "description": "Body (HTML or plain text)"
+        },
+        {
+          "name": "to",
+          "type": "string",
+          "location": "body",
+          "description": "To addresses (comma-separated)"
+        },
+        {
+          "name": "cc",
+          "type": "string",
+          "location": "body",
+          "description": "CC addresses"
+        },
+        {
+          "name": "bcc",
+          "type": "string",
+          "location": "body",
+          "description": "BCC addresses"
+        }
+      ]
+    },
+    {
+      "name": "messages_send",
+      "description": "Send a draft (with optional undo delay). Required: draft_message_id, thread_id. Optional: delay (default: 0). Returns the new SendResult.",
+      "method": "POST",
+      "path": "/messages/send",
+      "params": [
+        {
+          "name": "draft_message_id",
+          "type": "string",
+          "location": "body",
+          "description": "Draft ID (draft00 + 14 hex)",
+          "required": true
+        },
+        {
+          "name": "thread_id",
+          "type": "string",
+          "location": "body",
+          "description": "Thread ID for the send",
+          "required": true
+        },
+        {
+          "name": "delay",
+          "type": "int",
+          "location": "body",
+          "description": "Undo window in seconds (0-30)"
+        }
+      ]
+    },
+    {
+      "name": "reminders_cancel",
+      "description": "Cancel a snooze (un-snooze a thread). Required: reminder_id, thread_id.",
+      "method": "POST",
+      "path": "/reminders/cancel",
+      "params": [
+        {
+          "name": "reminder_id",
+          "type": "string",
+          "location": "body",
+          "description": "Reminder ID",
+          "required": true
+        },
+        {
+          "name": "thread_id",
+          "type": "string",
+          "location": "body",
+          "description": "Thread ID",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "reminders_create",
+      "description": "Create a snooze reminder for a thread. Required: thread_id, trigger_at. Returns the new Reminder.",
+      "method": "POST",
+      "path": "/reminders/create",
+      "params": [
+        {
+          "name": "thread_id",
+          "type": "string",
+          "location": "body",
+          "description": "Thread to snooze",
+          "required": true
+        },
+        {
+          "name": "trigger_at",
+          "type": "string",
+          "location": "body",
+          "description": "ISO timestamp to wake the thread",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "teams_suggest",
+      "description": "List teams the user belongs to. Returns array of Team.",
+      "method": "GET",
+      "path": "/v3/teams.suggest?includeSingletons=true",
+      "params": []
+    },
+    {
+      "name": "threads_get",
+      "description": "Get a thread by ID. Required: thread_id. Returns the new Thread.",
+      "method": "POST",
+      "path": "/v3/userdata.getThreads",
+      "params": [
+        {
+          "name": "thread_id",
+          "type": "string",
+          "location": "path",
+          "description": "Thread ID",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "threads_list",
+      "description": "List recent threads. Optional: limit (default: 50), offset (default: 0). Returns array of Thread.",
+      "method": "POST",
+      "path": "/v3/userdata.getThreads",
+      "params": [
+        {
+          "name": "limit",
+          "type": "int",
+          "location": "body",
+          "description": "Max threads to return"
+        },
+        {
+          "name": "offset",
+          "type": "int",
+          "location": "body",
+          "description": "Pagination offset"
+        }
+      ]
+    },
+    {
+      "name": "users_achievements",
+      "description": "User achievements / gamification state. Returns the Achievement.",
+      "method": "GET",
+      "path": "/v3/users.achievements",
+      "params": []
+    }
+  ]
+}
