@@ -141,6 +141,34 @@ func TestListMessages_LabelQueryAndPageToken(t *testing.T) {
 	}
 }
 
+func TestListThreads_LabelQueryAndPageToken(t *testing.T) {
+	var observedQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		observedQuery = r.URL.RawQuery
+		_, _ = w.Write([]byte(`{
+			"threads": [{"id":"t1","historyId":"h1"}],
+			"nextPageToken": "next-1",
+			"resultSizeEstimate": 5
+		}`))
+	}))
+	defer srv.Close()
+	withBaseURL(t, srv.URL)
+
+	c := nonRefreshingClient(t)
+	res, err := c.ListThreads(context.Background(), []string{"SENT"}, "in:anywhere -label:inbox", 999, "page-1")
+	if err != nil {
+		t.Fatalf("ListThreads: %v", err)
+	}
+	for _, want := range []string{"labelIds=SENT", "maxResults=500", "pageToken=page-1", "q=in%3Aanywhere+-label%3Ainbox"} {
+		if !strings.Contains(observedQuery, want) {
+			t.Fatalf("query %q missing %q", observedQuery, want)
+		}
+	}
+	if len(res.Threads) != 1 || res.Threads[0].ID != "t1" || res.NextPageToken != "next-1" || res.ResultSizeEstimate != 5 {
+		t.Fatalf("threads result wrong: %+v", res)
+	}
+}
+
 // TestGetMessage_DecodesBodyAndAttachments exercises the full message-tree
 // walk: text/plain, text/html, and one attachment with id/size.
 func TestGetMessage_DecodesBodyAndAttachments(t *testing.T) {

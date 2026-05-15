@@ -52,6 +52,12 @@ type ListMessagesResult struct {
 // returns threads. Callers fetch per-thread bodies via GetThread or
 // per-message bodies via GetMessage.
 func (c *Client) ListInboxThreads(ctx context.Context, pageSize int, pageToken string) (*ListInboxResult, error) {
+	return c.ListThreads(ctx, []string{"INBOX"}, "", pageSize, pageToken)
+}
+
+// ListThreads calls Gmail's users.threads.list endpoint with optional label
+// IDs and Gmail search syntax.
+func (c *Client) ListThreads(ctx context.Context, labelIDs []string, query string, pageSize int, pageToken string) (*ListInboxResult, error) {
 	if pageSize <= 0 {
 		pageSize = 25
 	}
@@ -59,8 +65,15 @@ func (c *Client) ListInboxThreads(ctx context.Context, pageSize int, pageToken s
 		pageSize = 500
 	}
 	q := url.Values{}
-	q.Set("labelIds", "INBOX")
 	q.Set("maxResults", strconv.Itoa(pageSize))
+	for _, labelID := range labelIDs {
+		if labelID != "" {
+			q.Add("labelIds", labelID)
+		}
+	}
+	if query != "" {
+		q.Set("q", query)
+	}
 	if pageToken != "" {
 		q.Set("pageToken", pageToken)
 	}

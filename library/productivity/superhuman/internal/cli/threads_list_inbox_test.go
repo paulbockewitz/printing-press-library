@@ -118,6 +118,50 @@ func TestThreadsListInbox_PageTokenContinues(t *testing.T) {
 	}
 }
 
+func TestThreadsListGmailFolderTypes(t *testing.T) {
+	cases := []struct {
+		listType string
+		queryKey string
+		want     string
+	}{
+		{listType: "sent", queryKey: "labelIds", want: "SENT"},
+		{listType: "starred", queryKey: "labelIds", want: "STARRED"},
+		{listType: "spam", queryKey: "labelIds", want: "SPAM"},
+		{listType: "trash", queryKey: "labelIds", want: "TRASH"},
+		{listType: "important", queryKey: "labelIds", want: "IMPORTANT"},
+		{listType: "archived", queryKey: "q", want: "in:anywhere -label:inbox"},
+		{listType: "done", queryKey: "q", want: "in:anywhere -label:inbox"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.listType, func(t *testing.T) {
+			srv := newInboxFakeServer(t, `{"threads":[{"id":"t1","historyId":"h1"}]}`, false)
+			withGmailBaseURL(t, srv.srv.URL)
+
+			configPath, tokenStorePath := withConfigPath(t)
+			seedSendStore(t, tokenStorePath, "user@example.com", "gid-001")
+			writeConfigPointingAt(t, configPath, "http://unused", "user@example.com")
+
+			stdout, _, err := executeCmd(t, "--config", configPath, "--json", "threads", "list", "--type", tc.listType, "--limit", "7")
+			if err != nil {
+				t.Fatalf("threads list --type %s: %v", tc.listType, err)
+			}
+			if got := srv.lastQuery.Get(tc.queryKey); got != tc.want {
+				t.Fatalf("%s query = %q want %q (raw %s)", tc.queryKey, got, tc.want, srv.lastQuery.Encode())
+			}
+			if got := srv.lastQuery.Get("maxResults"); got != "7" {
+				t.Fatalf("maxResults = %q want 7", got)
+			}
+			var envelope map[string]any
+			if err := json.Unmarshal([]byte(stdout), &envelope); err != nil {
+				t.Fatalf("parse envelope: %v\n%s", err, stdout)
+			}
+			if envelope["type"] != tc.listType {
+				t.Fatalf("type = %v want %s", envelope["type"], tc.listType)
+			}
+		})
+	}
+}
+
 // TestThreadsListInbox_NoActiveAccount surfaces a usable error when the
 // store has no account.
 func TestThreadsListInbox_NoActiveAccount(t *testing.T) {
@@ -205,7 +249,9 @@ func TestThreadsListInbox_UnsupportedType(t *testing.T) {
 		t.Fatalf("error %q missing 'unsupported --type'", err.Error())
 	}
 	// New "inbox" type must surface in the listed alternatives.
-	if !strings.Contains(err.Error(), "inbox") {
-		t.Fatalf("error %q should mention inbox as a valid type", err.Error())
+	for _, want := range []string{"inbox", "sent", "done", "starred", "archived", "spam", "trash", "important"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q should mention %s as a valid type", err.Error(), want)
+		}
 	}
 }

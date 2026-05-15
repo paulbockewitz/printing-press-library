@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -15,13 +17,8 @@ import (
 	"github.com/mvanhorn/printing-press-library/library/productivity/superhuman/internal/gmail"
 )
 
-// supportedThreadTypes mirrors the bundle's BackendListFetcher cases
-// (DRAFT, SH_SNOOZED → "reminder", SH_SCHEDULED → "scheduled", SH_SNIPPETS,
-// SH_SIGNATURES, SH_KNOWLEDGE_BASE) plus the gmail-passthrough "inbox" type
-// added in plan 2026-05-14-003 U3. The Superhuman backend rejects "inbox"
-// against userdata.getThreads (provider lists route through Gmail/MS Graph
-// passthrough); the inbox branch in this command's RunE handles that case
-// by calling gmail.ListInboxThreads instead.
+// supportedThreadTypes mirrors Superhuman backend system lists plus Gmail
+// folder passthrough types.
 var supportedThreadTypes = map[string]bool{
 	"draft":          true,
 	"reminder":       true,
@@ -30,6 +27,29 @@ var supportedThreadTypes = map[string]bool{
 	"signature":      true,
 	"knowledge-base": true,
 	"inbox":          true,
+	"sent":           true,
+	"done":           true,
+	"starred":        true,
+	"archived":       true,
+	"spam":           true,
+	"trash":          true,
+	"important":      true,
+}
+
+type threadListGmailSpec struct {
+	labelIDs []string
+	query    string
+}
+
+var gmailThreadListTypes = map[string]threadListGmailSpec{
+	"inbox":     {labelIDs: []string{"INBOX"}},
+	"sent":      {labelIDs: []string{"SENT"}},
+	"starred":   {labelIDs: []string{"STARRED"}},
+	"spam":      {labelIDs: []string{"SPAM"}},
+	"trash":     {labelIDs: []string{"TRASH"}},
+	"important": {labelIDs: []string{"IMPORTANT"}},
+	"done":      {query: "in:anywhere -label:inbox"},
+	"archived":  {query: "in:anywhere -label:inbox"},
 }
 
 func newThreadsListCmd(flags *rootFlags) *cobra.Command {
@@ -41,7 +61,7 @@ func newThreadsListCmd(flags *rootFlags) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List recent threads of a system list (draft, scheduled, reminder, snippet, signature, knowledge-base, inbox)",
+		Short: "List recent threads of a system list or Gmail folder",
 		Long: `List recent threads.
 
 Two paths under one command:
@@ -49,20 +69,20 @@ Two paths under one command:
   --type draft|reminder|scheduled|snippet|signature|knowledge-base
     Routes through Superhuman's backend at /v3/userdata.getThreads.
 
-  --type inbox
-    Routes through Gmail's users.threads.list passthrough so the inbox of
-    the active account is reachable. Pagination uses Gmail's nextPageToken:
+  --type inbox|sent|done|starred|archived|spam|trash|important
+    Routes through Gmail's users.threads.list passthrough so the active
+    account's folders are reachable. Pagination uses Gmail's nextPageToken:
     --page-token <token> continues a prior listing.
 
 Default --type=draft because drafts are the most reliably non-empty list per
 account.`,
-		Example:     "  superhuman-pp-cli threads list\n  superhuman-pp-cli threads list --type inbox --limit 25\n  superhuman-pp-cli threads list --type inbox --page-token <token>\n  superhuman-pp-cli threads list --type scheduled --limit 5\n  superhuman-pp-cli threads list --json",
+		Example:     "  superhuman-pp-cli threads list\n  superhuman-pp-cli threads list --type sent --limit 25\n  superhuman-pp-cli threads list --type archived --page-token <token>\n  superhuman-pp-cli threads list --type scheduled --limit 5\n  superhuman-pp-cli threads list --json",
 		Annotations: map[string]string{"pp:endpoint": "threads.list", "pp:method": "POST", "pp:path": "/v3/userdata.getThreads", "mcp:read-only": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !stdinBody {
 			}
-			if listType == "inbox" && !stdinBody {
-				return runThreadsListInbox(cmd, flags, bodyLimit, pageToken)
+			if _, ok := gmailThreadListTypes[listType]; ok && !stdinBody {
+				return runThreadsListGmail(cmd, flags, listType, bodyLimit, pageToken)
 			}
 			c, err := flags.newClient()
 			if err != nil {
@@ -83,11 +103,7 @@ account.`,
 				body = jsonBody
 			} else {
 				if !supportedThreadTypes[listType] {
-					valid := make([]string, 0, len(supportedThreadTypes))
-					for k := range supportedThreadTypes {
-						valid = append(valid, k)
-					}
-					return fmt.Errorf("threads list: unsupported --type %q (valid: %v)", listType, valid)
+					return fmt.Errorf("threads list: unsupported --type %q (valid: %s)", listType, strings.Join(validThreadTypes(), ", "))
 				}
 				// PATCH(U3): bundle's BackendListFetcher uses {type:"draft"}
 				// shape; empty {} returns HTTP 400 from the backend.
@@ -167,21 +183,30 @@ account.`,
 	cmd.Flags().IntVar(&bodyLimit, "limit", 50, "Max threads to return")
 	cmd.Flags().IntVar(&bodyOffset, "offset", 0, "Pagination offset (Superhuman backend lists only; inbox uses --page-token)")
 	cmd.Flags().BoolVar(&stdinBody, "stdin", false, "Read request body as JSON from stdin")
-	cmd.Flags().StringVar(&listType, "type", "draft", "Thread list type (draft, reminder, scheduled, snippet, signature, knowledge-base, inbox)")
+	cmd.Flags().StringVar(&listType, "type", "draft", "Thread list type (draft, reminder, scheduled, snippet, signature, knowledge-base, inbox, sent, done, starred, archived, spam, trash, important)")
 	cmd.Flags().StringVar(&pageToken, "page-token", "", "Continuation token for inbox listing (Gmail passthrough only)")
 
 	return cmd
 }
 
-// runThreadsListInbox is the --type=inbox branch. Gmail's
-// users.threads.list serves the inbox; the Superhuman backend's
-// userdata.getThreads rejects inbox-shaped requests with 400. Pagination
-// uses Gmail's pageToken contract rather than offset/limit so users can
-// resume a prior listing without re-counting.
-func runThreadsListInbox(cmd *cobra.Command, flags *rootFlags, limit int, pageToken string) error {
+// runThreadsListGmail is the Gmail-folder branch. Gmail's users.threads.list
+// serves inbox, sent, starred, spam, trash, important, and search-query
+// derived views such as done/archived. Pagination uses Gmail's pageToken
+// contract rather than offset/limit so users can resume a prior listing
+// without re-counting.
+func validThreadTypes() []string {
+	valid := make([]string, 0, len(supportedThreadTypes))
+	for k := range supportedThreadTypes {
+		valid = append(valid, k)
+	}
+	sort.Strings(valid)
+	return valid
+}
+
+func runThreadsListGmail(cmd *cobra.Command, flags *rootFlags, listType string, limit int, pageToken string) error {
 	// Verify mode short-circuits before any HTTP fire (per AGENTS.md).
 	if cliutil.IsVerifyEnv() {
-		fmt.Fprintf(cmd.OutOrStdout(), "would call gmail.googleapis.com/.../threads (inbox)\n")
+		fmt.Fprintf(cmd.OutOrStdout(), "would call gmail.googleapis.com/.../threads (%s)\n", listType)
 		return nil
 	}
 
@@ -192,15 +217,16 @@ func runThreadsListInbox(cmd *cobra.Command, flags *rootFlags, limit int, pageTo
 	gc := gmail.New(acct.Store, acct.Email, acct.GoogleID, acct.AccessToken)
 	gc.Stderr = cmd.ErrOrStderr()
 
-	res, err := gc.ListInboxThreads(cmd.Context(), limit, pageToken)
+	spec := gmailThreadListTypes[listType]
+	res, err := gc.ListThreads(cmd.Context(), spec.labelIDs, spec.query, limit, pageToken)
 	if err != nil {
 		if gmail.IsAuth(err) {
-			return authErr(fmt.Errorf("threads list --type inbox: %w", err))
+			return authErr(fmt.Errorf("threads list --type %s: %w", listType, err))
 		}
 		if ok, status := gmail.IsAPI(err); ok && status == 404 {
-			return notFoundErr(fmt.Errorf("threads list --type inbox: %w", err))
+			return notFoundErr(fmt.Errorf("threads list --type %s: %w", listType, err))
 		}
-		return apiErr(fmt.Errorf("threads list --type inbox: %w", err))
+		return apiErr(fmt.Errorf("threads list --type %s: %w", listType, err))
 	}
 
 	// JSON envelope first — agents read this, humans skip.
@@ -218,8 +244,8 @@ func runThreadsListInbox(cmd *cobra.Command, flags *rootFlags, limit int, pageTo
 		envelope := map[string]any{
 			"action":               "threads.list",
 			"resource":             "threads",
-			"type":                 "inbox",
-			"path":                 "/users/me/threads?labelIds=INBOX",
+			"type":                 listType,
+			"path":                 gmailThreadListPath(spec),
 			"success":              true,
 			"threads":              threadsJSON,
 			"next_page_token":      res.NextPageToken,
@@ -235,7 +261,7 @@ func runThreadsListInbox(cmd *cobra.Command, flags *rootFlags, limit int, pageTo
 	// Human-readable: one row per thread + a footer with the page token
 	// (when there's more to fetch) so the user can copy-paste.
 	if len(res.Threads) == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "No inbox threads.")
+		fmt.Fprintf(cmd.OutOrStdout(), "No %s threads.\n", listType)
 		return nil
 	}
 	rows := make([]map[string]any, 0, len(res.Threads))
@@ -255,4 +281,14 @@ func runThreadsListInbox(cmd *cobra.Command, flags *rootFlags, limit int, pageTo
 		fmt.Fprintf(cmd.OutOrStdout(), "\nMore: --page-token %s\n", res.NextPageToken)
 	}
 	return nil
+}
+
+func gmailThreadListPath(spec threadListGmailSpec) string {
+	if len(spec.labelIDs) > 0 {
+		return "/users/me/threads?labelIds=" + strings.Join(spec.labelIDs, ",")
+	}
+	if spec.query != "" {
+		return "/users/me/threads?q=" + spec.query
+	}
+	return "/users/me/threads"
 }
