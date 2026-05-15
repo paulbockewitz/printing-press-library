@@ -124,6 +124,68 @@ func TestSnippetsGetReturnsMatchingName(t *testing.T) {
 	}
 }
 
+// TestSnippetsGetPaginatesBeyond100 pins the greptile-snippets-pagination
+// patch: snippet lookup pages through results in chunks of 100 instead of
+// capping at the first page. The match here lives on page 2 (offset 100).
+// The prior implementation passed limit=100, offset=0 once and would have
+// returned "snippet \"target\" not found" despite the row being present.
+func TestSnippetsGetPaginatesBeyond100(t *testing.T) {
+	// Build page 0 (100 placeholder rows) and page 1 (the target).
+	page0 := make([]map[string]any, 100)
+	for i := 0; i < 100; i++ {
+		page0[i] = map[string]any{
+			"id":       "msg-page0-" + strings.Repeat("x", 1) + intstr(i),
+			"threadId": "thread-page0-" + intstr(i),
+			"name":     "filler-" + intstr(i),
+			"body":     "placeholder",
+		}
+	}
+	page1 := []map[string]any{
+		{"id": "target", "threadId": "thread-target", "name": "target", "body": "found"},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]any
+		_ = json.Unmarshal(body, &payload)
+		offset := 0
+		if v, ok := payload["offset"].(float64); ok {
+			offset = int(v)
+		}
+		var snippets []map[string]any
+		switch offset {
+		case 0:
+			snippets = page0
+		case 100:
+			snippets = page1
+		default:
+			snippets = nil
+		}
+		resp, _ := json.Marshal(map[string]any{"data": snippets})
+		_, _ = w.Write(resp)
+	}))
+	t.Cleanup(srv.Close)
+
+	configPath := withSnippetBackendConfig(t, srv.URL)
+
+	stdout, _, err := executeCmd(t, "--config", configPath, "--json", "snippets", "get", "target")
+	if err != nil {
+		t.Fatalf("snippets get: %v\n%s", err, stdout)
+	}
+	if !strings.Contains(stdout, `"id": "target"`) {
+		t.Fatalf("expected snippet from page 2, got: %s", stdout)
+	}
+}
+
+// intstr is a tiny helper to avoid importing strconv just for table fixtures.
+func intstr(n int) string {
+	if n < 10 {
+		return string(rune('0' + n))
+	}
+	return intstr(n/10) + intstr(n%10)
+}
+
 func TestSnippetsGetDuplicateNameUsesMostRecentWithWarning(t *testing.T) {
 	backend := newSnippetsBackendFake(t, snippetListJSON(
 		map[string]any{"id": "old", "threadId": "thread-old", "name": "foo", "body": "old", "modifiedAt": "2026-05-14T10:00:00Z"},

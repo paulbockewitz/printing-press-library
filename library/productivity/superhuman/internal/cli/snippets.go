@@ -284,10 +284,32 @@ func listBackendSnippets(flags *rootFlags, limit, offset int) ([]Snippet, error)
 	return snippets, nil
 }
 
+// PATCH(greptile-snippets-pagination): paginate through every snippet page
+// instead of capping at the first 100. The prior fetch passed limit=100,
+// offset=0 and gave up - users with >100 snippets silently failed to find
+// matches ranked beyond the first page. We page in chunks of 100 (the
+// same chunk size the bundle uses) and stop when a response returns fewer
+// rows than requested. The 10k hard ceiling guards against a runaway
+// backend that always returns a full page.
 func getBackendSnippet(flags *rootFlags, name string) (Snippet, int, error) {
-	snippets, err := listBackendSnippets(flags, 100, 0)
-	if err != nil {
-		return Snippet{}, 0, err
+	const pageSize = 100
+	const hardCeiling = 10000
+	var snippets []Snippet
+	for offset := 0; ; offset += pageSize {
+		page, err := listBackendSnippets(flags, pageSize, offset)
+		if err != nil {
+			return Snippet{}, 0, err
+		}
+		if len(page) == 0 {
+			break
+		}
+		snippets = append(snippets, page...)
+		if len(page) < pageSize {
+			break
+		}
+		if len(snippets) >= hardCeiling {
+			break
+		}
 	}
 	matches := make([]Snippet, 0, 1)
 	for _, snippet := range snippets {

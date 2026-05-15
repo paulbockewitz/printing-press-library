@@ -451,6 +451,85 @@ func TestRenderBody_PlainTextWrapping(t *testing.T) {
 	}
 }
 
+// TestCancelSchedulePostsWriteMessage pins the greptile-cancel-schedule
+// patch: in live mode the helper must actually POST to
+// /v3/userdata.writeMessage with scheduledFor:null at the draft's path,
+// not just print a local payload. Dry-run continues to print without
+// firing.
+func TestCancelSchedulePostsWriteMessage(t *testing.T) {
+	var received []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != sendEndpointWriteMessage {
+			http.Error(w, "wrong path: "+r.URL.Path, http.StatusNotFound)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]any
+		_ = json.Unmarshal(body, &payload)
+		received = append(received, payload)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	configPath, tokenStorePath := withConfigPath(t)
+	seedSendStore(t, tokenStorePath, "user@example.com", "gid-cancel")
+	writeConfigPointingAt(t, configPath, srv.URL, "user@example.com")
+
+	stdout, _, err := executeCmd(t, "--config", configPath, "--json", "send", "--cancel-schedule", "draft00abcdef12345678")
+	if err != nil {
+		t.Fatalf("send --cancel-schedule: %v\n%s", err, stdout)
+	}
+	if len(received) != 1 {
+		t.Fatalf("expected 1 backend call, got %d", len(received))
+	}
+	writes, ok := received[0]["writes"].([]any)
+	if !ok || len(writes) != 1 {
+		t.Fatalf("expected writes[1], got payload %+v", received[0])
+	}
+	write := writes[0].(map[string]any)
+	wantPath := "users/gid-cancel/threads/draft00abcdef12345678/messages/draft00abcdef12345678/draft"
+	if got := write["path"]; got != wantPath {
+		t.Fatalf("write path = %v, want %v", got, wantPath)
+	}
+	value := write["value"].(map[string]any)
+	if _, present := value["scheduledFor"]; !present {
+		t.Fatalf("value should explicitly carry scheduledFor (got %+v)", value)
+	}
+	if value["scheduledFor"] != nil {
+		t.Fatalf("scheduledFor = %v, want nil", value["scheduledFor"])
+	}
+	if !strings.Contains(stdout, `"success": true`) {
+		t.Fatalf("stdout missing success marker: %s", stdout)
+	}
+}
+
+// TestCancelScheduleDryRun confirms --dry-run still prints the would-fire
+// envelope without contacting the backend.
+func TestCancelScheduleDryRun(t *testing.T) {
+	var called int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&called, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	configPath, tokenStorePath := withConfigPath(t)
+	seedSendStore(t, tokenStorePath, "user@example.com", "gid-dryrun")
+	writeConfigPointingAt(t, configPath, srv.URL, "user@example.com")
+
+	stdout, _, err := executeCmd(t, "--config", configPath, "--json", "--dry-run", "send", "--cancel-schedule", "draft00abcdef12345678")
+	if err != nil {
+		t.Fatalf("send --dry-run --cancel-schedule: %v\n%s", err, stdout)
+	}
+	if got := atomic.LoadInt32(&called); got != 0 {
+		t.Fatalf("dry-run should not call the backend; got %d calls", got)
+	}
+	if !strings.Contains(stdout, `"dry_run": true`) {
+		t.Fatalf("expected dry_run envelope, got: %s", stdout)
+	}
+}
+
 // TestRenderBody_PlainTextEscapesHTML pins the greptile-p2-html-escape
 // patch behavior: plain-text bodies must HTML-escape `<`, `>`, `&` before
 // the <div> wrap so user-supplied tags do not inject into recipient

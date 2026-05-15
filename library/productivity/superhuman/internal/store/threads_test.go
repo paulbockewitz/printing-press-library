@@ -38,6 +38,43 @@ func TestListThreadsFilteredByParticipantsAndLabel(t *testing.T) {
 	}
 }
 
+// TestListThreadsFilteredLabelMatchesBeforeLimit pins the
+// greptile-label-filter-truncation patch: when the requested label only
+// matches threads ranked beyond filter.Limit by recency, the helper must
+// still return the matching threads. The prior order truncated to Limit
+// before label-filtering and would silently return an empty set here.
+func TestListThreadsFilteredLabelMatchesBeforeLimit(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "data.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+
+	// Three INBOX-only threads (most recent) plus one Pitch-labeled thread
+	// (older). With Limit=2, the prior implementation would slice to the
+	// two most-recent INBOX threads, then filter by Pitch, and return [].
+	if _, err := s.UpsertGmailMessages(ctx, []StoredMessage{
+		{ID: "m1", ThreadID: "tInbox1", AccountEmail: "user@example.com", LabelIDs: []string{"INBOX"}, From: "a@example.com", To: "user@example.com", InternalDate: 400},
+		{ID: "m2", ThreadID: "tInbox2", AccountEmail: "user@example.com", LabelIDs: []string{"INBOX"}, From: "b@example.com", To: "user@example.com", InternalDate: 300},
+		{ID: "m3", ThreadID: "tInbox3", AccountEmail: "user@example.com", LabelIDs: []string{"INBOX"}, From: "c@example.com", To: "user@example.com", InternalDate: 200},
+		{ID: "m4", ThreadID: "tPitch", AccountEmail: "user@example.com", LabelIDs: []string{"Pitch"}, From: "d@example.com", To: "user@example.com", InternalDate: 100},
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	threads, err := s.ListThreadsFiltered(ctx, ThreadFilter{
+		AccountEmail: "user@example.com",
+		Label:        "Pitch",
+		Limit:        2,
+	})
+	if err != nil {
+		t.Fatalf("ListThreadsFiltered: %v", err)
+	}
+	if len(threads) != 1 || threads[0].ThreadID != "tPitch" {
+		t.Fatalf("threads = %+v, want [tPitch]", threads)
+	}
+}
+
 func TestListThreadsFilteredByThreadIDs(t *testing.T) {
 	s, err := Open(filepath.Join(t.TempDir(), "data.db"))
 	if err != nil {

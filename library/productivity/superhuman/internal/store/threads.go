@@ -96,13 +96,23 @@ func (s *Store) ListThreadsFiltered(ctx context.Context, filter ThreadFilter) ([
 		out = append(out, *summary)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].LastMessageAt > out[j].LastMessageAt })
+
+	// PATCH(greptile-label-filter-truncation): apply label filtering BEFORE
+	// limit truncation. The prior order truncated to N first and then filtered,
+	// which silently returned an empty set whenever the N most-recent threads
+	// did not match the requested label (--label or --type). With the order
+	// flipped, truncation keeps the top N matching threads.
+	if filter.Label != "" || filter.TypeLabel != "" {
+		filtered, err := s.filterThreadsByLabels(ctx, out, filter)
+		if err != nil {
+			return nil, err
+		}
+		out = filtered
+	}
 	if len(out) > filter.Limit {
 		out = out[:filter.Limit]
 	}
-	if filter.Label == "" && filter.TypeLabel == "" {
-		return out, nil
-	}
-	return s.filterThreadsByLabels(ctx, out, filter)
+	return out, nil
 }
 
 func (s *Store) filterThreadsByLabels(ctx context.Context, threads []ThreadSummary, filter ThreadFilter) ([]ThreadSummary, error) {

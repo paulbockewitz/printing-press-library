@@ -472,19 +472,59 @@ func runSend(cmd *cobra.Command, flags *rootFlags, a sendCmdArgs) error {
 	return nil
 }
 
+// runCancelSchedule clears the scheduledFor field on an existing scheduled
+// draft so the send no longer fires at the future time.
+//
+// PATCH(greptile-cancel-schedule): the prior implementation built a payload
+// and printed it for BOTH dry-run and live paths, never reaching the API.
+// Live mode now POSTs to /v3/userdata.writeMessage with scheduledFor:null at
+// the existing draft's path - same shape `step1WriteMessage` uses for
+// scheduled sends. Dry-run continues to print the would-send envelope.
 func runCancelSchedule(cmd *cobra.Command, flags *rootFlags, draftID string) error {
 	if draftID == "" {
 		return usageErr(fmt.Errorf("send: --cancel-schedule requires a draft id"))
 	}
-	payload := map[string]any{
-		"action":       "cancel_schedule",
-		"draft_id":     draftID,
-		"scheduledFor": nil,
+	acct, err := resolveActiveAccount(flags)
+	if err != nil {
+		return authErr(err)
+	}
+	writePath := fmt.Sprintf("users/%s/threads/%s/messages/%s/draft", acct.GoogleID, draftID, draftID)
+	body := map[string]any{
+		"doNotReturnValues": true,
+		"writes": []map[string]any{
+			{
+				"path": writePath,
+				"value": map[string]any{
+					"id":           draftID,
+					"threadId":     draftID,
+					"scheduledFor": nil,
+				},
+			},
+		},
 	}
 	if flags.dryRun || cliutil.IsVerifyEnv() {
-		return printJSONFiltered(cmd.OutOrStdout(), payload, flags)
+		envelope := map[string]any{
+			"action":   "cancel_schedule",
+			"path":     sendEndpointWriteMessage,
+			"dry_run":  true,
+			"draft_id": draftID,
+			"body":     body,
+		}
+		return printJSONFiltered(cmd.OutOrStdout(), envelope, flags)
 	}
-	return printJSONFiltered(cmd.OutOrStdout(), payload, flags)
+	c, err := flags.newClient()
+	if err != nil {
+		return err
+	}
+	if _, _, err := c.Post(sendEndpointWriteMessage, body); err != nil {
+		return apiErr(fmt.Errorf("cancel-schedule: %w", err))
+	}
+	return printJSONFiltered(cmd.OutOrStdout(), map[string]any{
+		"action":   "cancel_schedule",
+		"path":     sendEndpointWriteMessage,
+		"draft_id": draftID,
+		"success":  true,
+	}, flags)
 }
 
 func resolveSendBodyOrSnippet(cmd *cobra.Command, a sendCmdArgs) (string, error) {

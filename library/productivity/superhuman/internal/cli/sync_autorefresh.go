@@ -116,9 +116,32 @@ func runSuperhumanBackendRefreshImpl(ctx context.Context, flags *rootFlags) (Bac
 	return out, nil
 }
 
+// syncOutputMu serializes runSyncResourceQuiet so concurrent calls don't
+// race on the os.Stdout / os.Stderr swap. The CLI's autorefresh path only
+// ever calls this from a single goroutine in PersistentPreRunE, but the
+// mutex makes the global-pointer swap defensive against any future
+// concurrent caller.
 var syncOutputMu sync.Mutex
 
-func runSyncResourceQuiet(fn func() syncResult) syncResult {
+// PATCH(greptile-quiet-stdout): replacing process-global os.Stdout / os.Stderr
+// is unsafe in the presence of concurrent writers. The CLI's autorefresh path
+// is single-goroutine so the bounded-blast-radius case applies here, but the
+// safer fix is to avoid the global swap entirely. syncResource writes via
+// fmt.Fprintf(os.Stdout, ...) so a writer-parameter refactor is required;
+// that refactor is large because syncResource is shared with the user-facing
+// `sync` command. Until that ships, this helper:
+//
+//   1. Holds syncOutputMu for the entire swap, so no other autorefresh call
+//      can run concurrently.
+//   2. Honors any in-flight write that races with the swap by returning the
+//      result without redirecting if os.OpenFile fails.
+//   3. Restores os.Stdout / os.Stderr before returning even if fn panics.
+//
+// If concurrent writers ever exist in this process (e.g. a future `watch`
+// background goroutine inside the same command invocation), this helper
+// MUST be replaced with a writer-parameter version of syncResource before
+// the new call site lands.
+func runSyncResourceQuiet(fn func() syncResult) (result syncResult) {
 	syncOutputMu.Lock()
 	defer syncOutputMu.Unlock()
 
