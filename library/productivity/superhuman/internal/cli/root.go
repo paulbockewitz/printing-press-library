@@ -245,6 +245,7 @@ See README.md or the bundled SKILL.md for recipes.`,
 	rootCmd.AddCommand(newImportCmd(flags))
 	rootCmd.AddCommand(newSyncCmd(flags))
 	rootCmd.AddCommand(newBootstrapCmd(flags))
+	rootCmd.AddCommand(newAwaitingReplyCmd(flags))
 	rootCmd.AddCommand(newWorkflowCmd(flags))
 	rootCmd.AddCommand(newAPICmd(flags))
 	rootCmd.AddCommand(newAiPromotedCmd(flags))
