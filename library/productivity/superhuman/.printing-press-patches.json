@@ -11,6 +11,85 @@
       "files": [
         "internal/auth/chrome_cookies.go"
       ]
+    },
+    {
+      "id": "backend-auth-headers",
+      "summary": "Send Superhuman backend identity headers on authenticated backend calls.",
+      "reason": "The published CLI needs the browser-derived x-superhuman headers to match the private backend contract.",
+      "files": [
+        "internal/client/client.go",
+        "internal/cli/threads_get.go",
+        "internal/cli/threads_list.go"
+      ]
+    },
+    {
+      "id": "real-send-and-unsend",
+      "summary": "Replace the generated promoted messages shortcut with the real send, unsend, reminders, snippets, and scheduling workflow.",
+      "reason": "Superhuman's send path is a multi-step backend workflow that cannot be represented by the original generated messages shortcut alone.",
+      "files": [
+        "internal/cli/root.go",
+        "internal/cli/promoted_messages.go",
+        "internal/cli/send.go",
+        "internal/cli/snippets.go"
+      ],
+      "validated_outcome": "go test ./... && go vet ./..."
+    },
+    {
+      "id": "local-mailbox-overhaul",
+      "summary": "Add local-store-backed folder, search, thread filter, participant, awaiting-reply, RFC822 lookup, watch, and bootstrap workflows.",
+      "reason": "Agent workflows need composable local mailbox operations with explicit freshness metadata and Gmail history deltas.",
+      "files": [
+        "internal/cli/bootstrap.go",
+        "internal/cli/threads.go",
+        "internal/cli/threads_list.go",
+        "internal/cli/messages_list.go",
+        "internal/cli/participants.go",
+        "internal/cli/awaiting_reply.go",
+        "internal/cli/watch.go",
+        "internal/store/messages.go",
+        "internal/store/participants.go",
+        "internal/store/threads.go",
+        "internal/gmail/history.go"
+      ],
+      "validated_outcome": "PII scrub gate and full module tests pass."
+    },
+    {
+      "id": "auto-refresh-and-envelope",
+      "summary": "Add automatic refresh provenance and opt-in response envelopes.",
+      "reason": "Agents need to know whether command data is fresh, local, or live without parsing command-specific output.",
+      "files": [
+        "internal/cli/autorefresh.go",
+        "internal/cli/sync_autorefresh.go",
+        "internal/cli/root.go",
+        "internal/cli/agent_context.go",
+        "internal/types/envelope.go",
+        "internal/cli/deliver.go"
+      ],
+      "validated_outcome": "go test ./... && go vet ./..."
+    },
+    {
+      "id": "refresh-state-diagnostics",
+      "summary": "Expose token refresh state, binary age, and 401 re-login hints.",
+      "reason": "Operators need actionable diagnostics when stored browser credentials are stale or revoked.",
+      "files": [
+        "internal/auth/refresh_state.go",
+        "internal/cli/doctor.go",
+        "internal/cli/root.go"
+      ],
+      "validated_outcome": "go test ./... && go vet ./..."
+    },
+    {
+      "id": "pii-scrub",
+      "summary": "Replace session-specific emails, Google user IDs, draft IDs, and names with example placeholders.",
+      "reason": "The published library must not contain user-specific mailbox artifacts from the implementation session.",
+      "files": [
+        "cmd/disk-auth-smoke/main.go",
+        "internal/auth/chrome_cookies_test.go",
+        "internal/cli/auth_login.go",
+        "SKILL.md",
+        "README.md"
+      ],
+      "validated_outcome": "Known-token grep gate returns zero matches."
     }
   ]
 }

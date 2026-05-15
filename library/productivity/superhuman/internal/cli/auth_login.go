@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/mvanhorn/printing-press-library/library/productivity/superhuman/internal/auth"
 	"github.com/mvanhorn/printing-press-library/library/productivity/superhuman/internal/cliutil"
+	"github.com/spf13/cobra"
 )
 
 // authLoginCDPFactory is a package-level test seam. Production code falls
@@ -136,7 +136,7 @@ func runDiskLogin(cmd *cobra.Command, flags *rootFlags, accountFilter string) er
 
 	// Step 1: resolve Chrome user-data-dir and read Superhuman's localStorage
 	// so we can map googleId -> email. Keys look like `user@example.com:id`
-	// with values like `"101619200793245775104"` (JSON-quoted).
+	// with values like `"123456789012345678901"` (JSON-quoted).
 	dataDir, err := auth.ChromeDataDir()
 	if err != nil {
 		return authErr(fmt.Errorf("auth login --disk: resolve chrome data dir: %w", err))
@@ -432,12 +432,12 @@ func runAuthLogin(cmd *cobra.Command, flags *rootFlags, opts runAuthLoginOpts) e
 	// account row parser.
 	if flags.asJSON {
 		out := map[string]any{
-			"saved":              true,
-			"email":              tokens.Email,
-			"provider":           tokens.Provider,
-			"id_token_expires":   tokens.IDTokenExpires,
-			"has_refresh_token":  tokens.RefreshToken != "",
-			"token_store_path":   cfg.TokenStorePath(),
+			"saved":             true,
+			"email":             tokens.Email,
+			"provider":          tokens.Provider,
+			"id_token_expires":  tokens.IDTokenExpires,
+			"has_refresh_token": tokens.RefreshToken != "",
+			"token_store_path":  cfg.TokenStorePath(),
 		}
 		return printJSONFiltered(w, out, flags)
 	}

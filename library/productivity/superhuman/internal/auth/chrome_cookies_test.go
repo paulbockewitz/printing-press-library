@@ -42,8 +42,8 @@ func TestChromeListAccountsOnAccountsHost(t *testing.T) {
 		{
 			name: "skips short digit-only names (not a real googleId)",
 			cookies: map[string]string{
-				"123":     "x", // too short
-				"1234567890":     "x", // 10 digits, too short
+				"123":             "x", // too short
+				"1234567890":      "x", // 10 digits, too short
 				"123456789012345": "x", // 15 digits, still too short
 			},
 			want: nil,
@@ -52,10 +52,10 @@ func TestChromeListAccountsOnAccountsHost(t *testing.T) {
 			name: "captures 21-digit google ids",
 			cookies: map[string]string{
 				"csrf":                  "x",
-				"101619200793245775104": "session-work",
-				"123456789012345678901": "session-personal",
+				"123456789012345678901": "session-one",
+				"987654321098765432109": "session-two",
 			},
-			want: []string{"101619200793245775104", "123456789012345678901"},
+			want: []string{"123456789012345678901", "987654321098765432109"},
 		},
 		{
 			name: "captures 16-digit boundary digit names",

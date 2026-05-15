@@ -14,7 +14,7 @@ import (
 
 func main() {
 	email := "user@example.com"
-	googleID := "101619200793245775104"
+	googleID := "123456789012345678901"
 	if len(os.Args) > 1 {
 		email = os.Args[1]
 	}
