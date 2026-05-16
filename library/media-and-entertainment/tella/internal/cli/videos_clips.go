@@ -35,6 +35,9 @@ func newVideosClipsCmd(flags *rootFlags) *cobra.Command {
 	cmd.AddCommand(newVideosClipsListSourcesCmd(flags))
 	cmd.AddCommand(newVideosClipsListZoomsCmd(flags))
 	cmd.AddCommand(newVideosClipsRemoveBlurCmd(flags))
+	// PATCH(library): add remove-buffers composition (cataloged in
+	// .printing-press-patches.json#add-remove-buffers-composition)
+	cmd.AddCommand(newVideosClipsRemoveBuffersCmd(flags))
 	cmd.AddCommand(newVideosClipsRemoveFillersCmd(flags))
 	cmd.AddCommand(newVideosClipsRemoveHighlightCmd(flags))
 	cmd.AddCommand(newVideosClipsRemoveLayoutCmd(flags))

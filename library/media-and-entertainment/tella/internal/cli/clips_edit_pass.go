@@ -33,12 +33,18 @@ func newClipsCmd(flags *rootFlags) *cobra.Command {
 func newClipsEditPassCmd(flags *rootFlags) *cobra.Command {
 	var playlistID string
 	var removeFillers bool
+	// PATCH(library): --remove-buffers chains head+tail silence trim as a
+	// composition of GET /clips/{clipId} + GET /silences + POST /cut. The
+	// public API has no single-POST `remove-buffers` endpoint (verified 404
+	// against api.tella.com on 2026-05-16). Cataloged in
+	// .printing-press-patches.json#add-remove-buffers-composition.
+	var removeBuffers bool
 	var trimSilencesGT string
 	var apply bool
 	cmd := &cobra.Command{
 		Use:     "edit-pass",
-		Short:   "Apply remove-fillers and trim-silences across every clip in a playlist",
-		Example: "  tella-pp-cli clips edit-pass --playlist plst_42 --remove-fillers --trim-silences-gt 1s --json",
+		Short:   "Apply remove-fillers, remove-buffers, and trim-silences across every clip in a playlist",
+		Example: "  tella-pp-cli clips edit-pass --playlist plst_42 --remove-fillers --remove-buffers --trim-silences-gt 1s --json",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if dryRunOK(flags) {
 				return printJSONFiltered(cmd.OutOrStdout(), map[string]any{
@@ -123,8 +129,16 @@ func newClipsEditPassCmd(flags *rootFlags) *cobra.Command {
 					if removeFillers {
 						p.Ops = append(p.Ops, op{Op: "remove-fillers"})
 					}
-					if minSilenceMS > 0 {
-						silData, silErr := c.Get(fmt.Sprintf("/v1/videos/%s/clips/%s/silences", vid, cid), nil)
+					// Share one silences fetch between --remove-buffers and
+					// --trim-silences-gt. The two paths use different parsers
+					// (parseSilencesMs vs the legacy extractSilenceRanges
+					// against the older field-name shape) so both run if
+					// requested, but the network call happens once per clip.
+					var silData json.RawMessage
+					var silErr error
+					silencesNeeded := removeBuffers || minSilenceMS > 0
+					if silencesNeeded {
+						silData, silErr = c.Get(fmt.Sprintf("/v1/videos/%s/clips/%s/silences", vid, cid), nil)
 						if silErr != nil {
 							enumFailures = append(enumFailures, enumerationFailure{
 								VideoID: vid,
@@ -132,14 +146,45 @@ func newClipsEditPassCmd(flags *rootFlags) *cobra.Command {
 								Stage:   "fetch_silences",
 								Error:   truncate(silErr.Error(), 200),
 							})
+						}
+					}
+					// PATCH(library): plan head/tail buffer cuts. Needs both
+					// clip metadata (for tail tolerance) and the live-shape
+					// silences. Failures of either dependency surface via
+					// enumeration_failures so the --apply success report
+					// stays honest.
+					if removeBuffers && silErr == nil {
+						clipDurationMs, durErr := fetchClipDurationMs(c, vid, cid)
+						if durErr != nil {
+							enumFailures = append(enumFailures, enumerationFailure{
+								VideoID: vid,
+								ClipID:  cid,
+								Stage:   "fetch_clip_duration",
+								Error:   truncate(durErr.Error(), 200),
+							})
 						} else {
-							for _, sil := range extractSilenceRanges(silData) {
-								if sil.End-sil.Start >= minSilenceMS {
-									p.Ops = append(p.Ops, op{
-										Op:   "cut",
-										Args: map[string]any{"start": sil.Start, "end": sil.End},
-									})
-								}
+							head, tail := pickBufferRanges(parseSilencesMs(silData), clipDurationMs)
+							if head != nil {
+								p.Ops = append(p.Ops, op{
+									Op:   "remove-buffers-head",
+									Args: map[string]any{"fromMs": head.Start, "toMs": head.End},
+								})
+							}
+							if tail != nil {
+								p.Ops = append(p.Ops, op{
+									Op:   "remove-buffers-tail",
+									Args: map[string]any{"fromMs": tail.Start, "toMs": tail.End},
+								})
+							}
+						}
+					}
+					if minSilenceMS > 0 && silErr == nil {
+						for _, sil := range extractSilenceRanges(silData) {
+							if sil.End-sil.Start >= minSilenceMS {
+								p.Ops = append(p.Ops, op{
+									Op:   "cut",
+									Args: map[string]any{"start": sil.Start, "end": sil.End},
+								})
 							}
 						}
 					}
@@ -178,6 +223,12 @@ func newClipsEditPassCmd(flags *rootFlags) *cobra.Command {
 							_, _, postErr = c.Post(fmt.Sprintf("/v1/videos/%s/clips/%s/remove-fillers", p.VideoID, p.ClipID), map[string]any{})
 						case "cut":
 							_, _, postErr = c.Post(fmt.Sprintf("/v1/videos/%s/clips/%s/cut", p.VideoID, p.ClipID), o.Args)
+						// PATCH(library): remove-buffers head/tail both POST to /cut
+						// with the planned {fromMs, toMs} args. The /cut endpoint
+						// merges adjacent/overlapping cuts server-side, so the head
+						// and tail can fire in either order without conflicting.
+						case "remove-buffers-head", "remove-buffers-tail":
+							_, _, postErr = c.Post(fmt.Sprintf("/v1/videos/%s/clips/%s/cut", p.VideoID, p.ClipID), o.Args)
 						}
 						if postErr != nil {
 							failed++
@@ -204,6 +255,9 @@ func newClipsEditPassCmd(flags *rootFlags) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&playlistID, "playlist", "", "Playlist ID to iterate")
 	cmd.Flags().BoolVar(&removeFillers, "remove-fillers", false, "Plan a remove-fillers pass for every clip")
+	// PATCH(library): --remove-buffers head+tail composition (no public-API
+	// single endpoint; see videos_clips_remove-buffers.go).
+	cmd.Flags().BoolVar(&removeBuffers, "remove-buffers", false, "Plan head+tail silence-buffer cuts for every clip")
 	cmd.Flags().StringVar(&trimSilencesGT, "trim-silences-gt", "", "Plan cuts for silences longer than this duration (e.g. 1s)")
 	cmd.Flags().BoolVar(&apply, "apply", false, "Actually fire the planned mutations (default off — print plan only)")
 	return cmd

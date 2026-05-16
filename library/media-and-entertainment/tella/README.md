@@ -20,7 +20,6 @@ For CLI only (no skill):
 npx -y @mvanhorn/printing-press install tella --cli-only
 ```
 
-
 ### Without Node
 
 The generated install path is category-agnostic until this CLI is published. If `npx` is not available before publish, install Node or use the category-specific Go fallback from the public-library entry after publish.
@@ -30,6 +29,7 @@ The generated install path is category-agnostic until this CLI is published. If 
 Download a pre-built binary for your platform from the [latest release](https://github.com/mvanhorn/printing-press-library/releases/tag/tella-current). On macOS, clear the Gatekeeper quarantine: `xattr -d com.apple.quarantine <binary>`. On Unix, mark it executable: `chmod +x <binary>`.
 
 <!-- pp-hermes-install-anchor -->
+
 ## Install for Hermes
 
 From the Hermes CLI:
@@ -89,6 +89,7 @@ tella-pp-cli webhooks tail --follow
 These capabilities aren't available in any other tool for this API.
 
 ### Local-first transcendence
+
 - **`transcripts search`** — FTS5 search across every cached clip transcript in your workspace; returns video, clip, and timecode hits in milliseconds.
 
   _Use this when an agent or human needs to find every video that mentioned a topic without rehydrating the workspace from the API._
@@ -96,6 +97,7 @@ These capabilities aren't available in any other tool for this API.
   ```bash
   tella-pp-cli transcripts search "pricing change" --json --limit 10
   ```
+
 - **`videos viewed`** — Roll up webhook view-milestone events into a per-video summary over a window (e.g. who crossed 75% in the last 7 days).
 
   _Use this in a sales follow-up loop to triage prospects by engagement without scanning the dashboard._
@@ -103,6 +105,7 @@ These capabilities aren't available in any other tool for this API.
   ```bash
   tella-pp-cli videos viewed --since 7d --milestone 75 --json
   ```
+
 - **`workspace stats`** — Local aggregate of video count, clip count, total duration, transcript word count, and export count by month across the cached workspace.
 
   _Use this for monthly creator-economy reports without dashboard scraping._
@@ -112,6 +115,7 @@ These capabilities aren't available in any other tool for this API.
   ```
 
 ### Webhook tooling
+
 - **`webhooks tail`** — Stream new webhook events from the inbox to stdout, and replay any prior message to a local URL with valid HMAC headers — no public tunnel needed.
 
   _Use this when developing a webhook handler against Tella without exposing localhost via a tunnel._
@@ -121,13 +125,19 @@ These capabilities aren't available in any other tool for this API.
   ```
 
 ### Bulk operations
-- **`clips edit-pass`** — Apply a chained set of edits (remove-fillers, trim-silences-gt N, blur preset) across every clip in a playlist in one command.
+
+- **`clips edit-pass`** — Apply a chained set of edits (remove-fillers, remove-buffers, trim-silences-gt N, blur preset) across every clip in a playlist in one command.
 
   _Use this to apply a creator's standard edit pass across an entire playlist without per-clip clicking._
 
   ```bash
-  tella-pp-cli clips edit-pass --playlist plst_42 --remove-fillers --trim-silences-gt 1s --dry-run
+  tella-pp-cli clips edit-pass --playlist plst_42 --remove-fillers --remove-buffers --trim-silences-gt 1s --dry-run
   ```
+
+  `--remove-buffers` cuts the leading and trailing silence ranges on each clip. It composes `GET /silences` with the clip's `durationSeconds` and POSTs the head and tail ranges via `/cut`. For a single clip without a playlist, use `tella-pp-cli videos clips remove-buffers <videoId> <clipId>`.
+
+  > **Note on "Find mistakes":** the AI-mistake-detection button in the Tella web UI is not yet exposed on the public API (verified via 404 against `api.tella.com` on 2026-05-16). The web app uses an unofficial internal endpoint at `prod-stream.tella.tv/ai-mistakes/analyze-scene` (Server-Sent Events) that is out of scope for this CLI. A follow-up release will add `--find-mistakes` if/when Tella publishes a public endpoint.
+
 - **`exports wait`** — Kick off exports for one or more videos and block until each is ready, short-circuiting on the Export ready webhook event.
 
   _Use this in batch publishing scripts that need export URLs for downstream uploads._
@@ -137,6 +147,7 @@ These capabilities aren't available in any other tool for this API.
   ```
 
 ### Transcript tooling
+
 - **`clips transcript-diff`** — Diff a clip's cut transcript against its uncut transcript to surface every word that editing removed (filler, silence, hand-edit) with timecodes.
 
   _Use this to audit what an automated edit pass actually changed before publishing._
@@ -144,6 +155,7 @@ These capabilities aren't available in any other tool for this API.
   ```bash
   tella-pp-cli clips transcript-diff clp_abc --json
   ```
+
 - **`clips captions`** — Format a clip's cut transcript as an SRT or VTT subtitle file ready to attach to an embed or upload.
 
   _Use this to ship caption files alongside video embeds without round-tripping through a separate caption tool._
@@ -186,7 +198,6 @@ Webhook endpoint management
 - **`tella-pp-cli webhooks get-endpoint-secret`** - Retrieves the signing secret for a webhook endpoint. Use this to verify incoming webhook payloads.
 - **`tella-pp-cli webhooks get-message`** - Returns details of a specific webhook message by ID
 - **`tella-pp-cli webhooks list-messages`** - Returns a list of recently sent webhook messages for debugging purposes
-
 
 ## Output Formats
 
@@ -238,7 +249,6 @@ Then invoke `/pp-tella <query>` in Claude Code. The skill is the most efficient 
 
 If you'd rather register this CLI as an MCP server in Claude Code, install the MCP binary first:
 
-
 Install the MCP binary from this CLI's published public-library entry or pre-built release.
 
 Then register it:
@@ -265,7 +275,6 @@ Requires Claude Desktop 1.0.0 or later. Pre-built bundles ship for macOS Apple S
 <summary>Manual JSON config (advanced)</summary>
 
 If you can't use the MCPB bundle (older Claude Desktop, unsupported platform), install the MCP binary and configure it manually.
-
 
 Install the MCP binary from this CLI's published public-library entry or pre-built release.
 
@@ -302,15 +311,17 @@ Static request headers can be configured under `headers`; per-command header ove
 
 Environment variables:
 
-| Name | Kind | Required | Description |
-| --- | --- | --- | --- |
-| `TELLA_API_KEY` | per_call | Yes | Set to your API credential. |
+| Name            | Kind     | Required | Description                 |
+| --------------- | -------- | -------- | --------------------------- |
+| `TELLA_API_KEY` | per_call | Yes      | Set to your API credential. |
 
 ## Troubleshooting
+
 **Authentication errors (exit code 4)**
+
 - Run `tella-pp-cli doctor` to check credentials
 - Verify the environment variable is set: `echo $TELLA_API_KEY`
-**Not found errors (exit code 3)**
+  **Not found errors (exit code 3)**
 - Check the resource ID is correct
 - Run the `list` command to see available items
 
@@ -319,7 +330,7 @@ Environment variables:
 - **401 Unauthorized on every call** — Re-fetch your API key at tella.tv → Account → Settings → API and run `tella-pp-cli auth set-token` again.
 - **Empty results from `transcripts search --data-source local`** — Run `tella-pp-cli sync` first to populate the local transcripts table.
 - **`webhooks tail` shows no events** — Confirm a webhook endpoint is registered (`tella-pp-cli webhooks endpoint create`); the inbox only collects events for registered endpoints.
-- **`clips edit-pass --dry-run` shows zero planned mutations** — The playlist may be empty or the silence threshold (--trim-silences-gt) is larger than every gap; run `clips silences --playlist <id>` to inspect raw ranges.
+- **`clips edit-pass --dry-run` shows zero planned mutations** — The playlist may be empty, the silence threshold (--trim-silences-gt) is larger than every gap, or (when running with `--remove-buffers`) none of the clips have a silence within 50 ms of `startTimeMs == 0` or within 100 ms of the clip's `durationSeconds`. Run `videos clips get-silences <id> <clipId>` to inspect raw ranges.
 - **Export wait times out** — Default timeout is 10m. Long videos can exceed; pass `--timeout 30m` and ensure the Export ready webhook endpoint is registered for early termination.
 
 ---

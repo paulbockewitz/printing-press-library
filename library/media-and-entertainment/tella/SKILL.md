@@ -40,6 +40,7 @@ Reach for tella-pp-cli when you need agent-shaped Tella operations: scripted bat
 These capabilities aren't available in any other tool for this API.
 
 ### Local-first transcendence
+
 - **`transcripts search`** — FTS5 search across every cached clip transcript in your workspace; returns video, clip, and timecode hits in milliseconds.
 
   _Use this when an agent or human needs to find every video that mentioned a topic without rehydrating the workspace from the API._
@@ -47,6 +48,7 @@ These capabilities aren't available in any other tool for this API.
   ```bash
   tella-pp-cli transcripts search "pricing change" --json --limit 10
   ```
+
 - **`videos viewed`** — Roll up webhook view-milestone events into a per-video summary over a window (e.g. who crossed 75% in the last 7 days).
 
   _Use this in a sales follow-up loop to triage prospects by engagement without scanning the dashboard._
@@ -54,6 +56,7 @@ These capabilities aren't available in any other tool for this API.
   ```bash
   tella-pp-cli videos viewed --since 7d --milestone 75 --json
   ```
+
 - **`workspace stats`** — Local aggregate of video count, clip count, total duration, transcript word count, and export count by month across the cached workspace.
 
   _Use this for monthly creator-economy reports without dashboard scraping._
@@ -63,6 +66,7 @@ These capabilities aren't available in any other tool for this API.
   ```
 
 ### Webhook tooling
+
 - **`webhooks tail`** — Stream new webhook events from the inbox to stdout, and replay any prior message to a local URL with valid HMAC headers — no public tunnel needed.
 
   _Use this when developing a webhook handler against Tella without exposing localhost via a tunnel._
@@ -72,13 +76,19 @@ These capabilities aren't available in any other tool for this API.
   ```
 
 ### Bulk operations
-- **`clips edit-pass`** — Apply a chained set of edits (remove-fillers, trim-silences-gt N, blur preset) across every clip in a playlist in one command.
+
+- **`clips edit-pass`** — Apply a chained set of edits (remove-fillers, remove-buffers, trim-silences-gt N, blur preset) across every clip in a playlist in one command.
 
   _Use this to apply a creator's standard edit pass across an entire playlist without per-clip clicking._
 
   ```bash
-  tella-pp-cli clips edit-pass --playlist plst_42 --remove-fillers --trim-silences-gt 1s --dry-run
+  tella-pp-cli clips edit-pass --playlist plst_42 --remove-fillers --remove-buffers --trim-silences-gt 1s --dry-run
   ```
+
+  `--remove-buffers` cuts the leading and trailing silence ranges on each clip. It composes `GET /silences` with the clip's `durationSeconds` and POSTs the head and tail ranges via `/cut`. Pair with `--dry-run` to see the planned cuts per clip before firing.
+
+  > **Tella's "Find mistakes" (AI mistake detection) is not yet exposed on the public API.** Verified via 404 against `api.tella.com/v1/videos/{id}/clips/{clipId}/find-mistakes` and several alternate spellings on 2026-05-16. The Tella web UI uses an unofficial internal endpoint (`prod-stream.tella.tv/ai-mistakes/analyze-scene`, Server-Sent Events). If/when Tella ships it publicly, a follow-up release will add `--find-mistakes`.
+
 - **`exports wait`** — Kick off exports for one or more videos and block until each is ready, short-circuiting on the Export ready webhook event.
 
   _Use this in batch publishing scripts that need export URLs for downstream uploads._
@@ -88,6 +98,7 @@ These capabilities aren't available in any other tool for this API.
   ```
 
 ### Transcript tooling
+
 - **`clips transcript-diff`** — Diff a clip's cut transcript against its uncut transcript to surface every word that editing removed (filler, silence, hand-edit) with timecodes.
 
   _Use this to audit what an automated edit pass actually changed before publishing._
@@ -95,6 +106,7 @@ These capabilities aren't available in any other tool for this API.
   ```bash
   tella-pp-cli clips transcript-diff clp_abc --json
   ```
+
 - **`clips captions`** — Format a clip's cut transcript as an SRT or VTT subtitle file ready to attach to an embed or upload.
 
   _Use this to ship caption files alongside video embeds without round-tripping through a separate caption tool._
@@ -128,7 +140,6 @@ These capabilities aren't available in any other tool for this API.
 - `tella-pp-cli webhooks get-message` — Returns details of a specific webhook message by ID
 - `tella-pp-cli webhooks list-messages` — Returns a list of recently sent webhook messages for debugging purposes
 
-
 ### Finding the right command
 
 When you know what you want to do but not which command does it, ask the CLI directly:
@@ -140,7 +151,6 @@ tella-pp-cli which "<capability in your own words>"
 `which` resolves a natural-language capability query to the best matching command from this CLI's curated feature index. Exit code `0` means at least one match; exit code `2` means no confident match — fall back to `--help` or use a narrower query.
 
 ## Recipes
-
 
 ### Find every video where a topic was discussed
 
@@ -161,10 +171,10 @@ Reads cached webhook view-milestone events grouped by video and viewer.
 ### Apply a creator's standard edit pass to a playlist
 
 ```bash
-tella-pp-cli clips edit-pass --playlist plst_42 --remove-fillers --trim-silences-gt 1s --dry-run
+tella-pp-cli clips edit-pass --playlist plst_42 --remove-fillers --remove-buffers --trim-silences-gt 1s --dry-run
 ```
 
-Iterates clips in a playlist and chains real mutation endpoints; --dry-run shows the plan.
+Iterates clips in a playlist and chains real mutation endpoints; `--remove-buffers` trims leading + trailing silence by composing `/silences` + `/cut`; `--dry-run` shows the plan.
 
 ### Develop a webhook handler without ngrok
 
@@ -199,6 +209,7 @@ Add `--agent` to any command. Expands to: `--json --compact --no-input --no-colo
   ```bash
   tella-pp-cli playlists list --agent --select id,name,status
   ```
+
 - **Previewable** — `--dry-run` shows the request without sending
 - **Offline-friendly** — sync/search commands can use the local SQLite store when available
 - **Non-interactive** — never prompts, every input is a flag
@@ -229,16 +240,16 @@ tella-pp-cli feedback list --json --limit 10
 
 Entries are stored locally at `~/.tella-pp-cli/feedback.jsonl`. They are never POSTed unless `TELLA_FEEDBACK_ENDPOINT` is set AND either `--send` is passed or `TELLA_FEEDBACK_AUTO_SEND=true`. Default behavior is local-only.
 
-Write what *surprised* you, not a bug report. Short, specific, one line: that is the part that compounds.
+Write what _surprised_ you, not a bug report. Short, specific, one line: that is the part that compounds.
 
 ## Output Delivery
 
 Every command accepts `--deliver <sink>`. The output goes to the named sink in addition to (or instead of) stdout, so agents can route command results without hand-piping. Three sinks are supported:
 
-| Sink | Effect |
-|------|--------|
-| `stdout` | Default; write to stdout only |
-| `file:<path>` | Atomically write output to `<path>` (tmp + rename) |
+| Sink            | Effect                                                                                          |
+| --------------- | ----------------------------------------------------------------------------------------------- |
+| `stdout`        | Default; write to stdout only                                                                   |
+| `file:<path>`   | Atomically write output to `<path>` (tmp + rename)                                              |
 | `webhook:<url>` | POST the output body to the URL (`application/json` or `application/x-ndjson` when `--compact`) |
 
 Unknown schemes are refused with a structured error naming the supported set. Webhook failures return non-zero and log the URL + HTTP status on stderr.
@@ -259,15 +270,15 @@ Explicit flags always win over profile values; profile values win over defaults.
 
 ## Exit Codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 2 | Usage error (wrong arguments) |
-| 3 | Resource not found |
-| 4 | Authentication required |
-| 5 | API error (upstream issue) |
-| 7 | Rate limited (wait and retry) |
-| 10 | Config error |
+| Code | Meaning                       |
+| ---- | ----------------------------- |
+| 0    | Success                       |
+| 2    | Usage error (wrong arguments) |
+| 3    | Resource not found            |
+| 4    | Authentication required       |
+| 5    | API error (upstream issue)    |
+| 7    | Rate limited (wait and retry) |
+| 10   | Config error                  |
 
 ## Argument Parsing
 
