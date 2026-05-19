@@ -19,5 +19,7 @@
     "CLOSE_DEVELOPER_BEARER_AUTH"
   ],
   "printing_press_commit_sha": "b6f1fae8d028e20347382157d46f6dee0e768778",
-  "printing_press_library_commit_sha": "fb477915cf79c2e3de4f7089d8ef05634eb326b8"
+  "printing_press_library_commit_sha": "fb477915cf79c2e3de4f7089d8ef05634eb326b8",
+  "sha256": "76665043e16205047da0cde23e47695d62ef7d5632d698cd8b27a57a7b26cdac",
+  "binary_generated_at": "2026-05-19T06:19:19Z"
 }
