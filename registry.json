@@ -136,6 +136,28 @@
       }
     },
     {
+      "name": "american-reindustrialization",
+      "category": "other",
+      "api": "American Reindustrialization",
+      "description": "Browse, slice, and analyze the curated American Reindustrialization directory — with diffs, geo clusters, sector...",
+      "path": "library/other/american-reindustrialization",
+      "printer": "tmchow",
+      "printer_name": "Trevin Chow",
+      "mcp": {
+        "binary": "american-reindustrialization-pp-mcp",
+        "transports": [
+          "stdio",
+          "http"
+        ],
+        "tool_count": 18,
+        "public_tool_count": 18,
+        "auth_type": "none",
+        "env_vars": [],
+        "mcp_ready": "full",
+        "spec_format": "internal"
+      }
+    },
+    {
       "name": "apartments",
       "category": "other",
       "api": "Apartments",
