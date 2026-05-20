@@ -6,7 +6,7 @@ package main
 import (
 	"os"
 
-	"gohighlevel-pp-cli/internal/cli"
+	"github.com/mvanhorn/printing-press-library/library/sales-and-crm/gohighlevel/internal/cli"
 )
 
 func main() {
