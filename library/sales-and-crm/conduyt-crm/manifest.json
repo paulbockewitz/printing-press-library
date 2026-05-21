@@ -15,12 +15,12 @@
       "command": "${__dirname}/bin/conduyt-crm-pp-mcp",
       "args": [],
       "env": {
-        "CONDUYT_CRM_TOKEN": "${user_config.CONDUYT_CRM_TOKEN}"
+        "CONDUYT_CRM_TOKEN": "${user_config.conduyt_crm_token}"
       }
     }
   },
   "user_config": {
-    "CONDUYT_CRM_TOKEN": {
+    "conduyt_crm_token": {
       "type": "string",
       "title": "CONDUYT_CRM_TOKEN",
       "description": "Bearer token for authenticating with the Conduyt CRM API.",

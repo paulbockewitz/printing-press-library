@@ -7,6 +7,8 @@ Per CLI:
 - has manifest_version="0.3", non-empty name, display_name, version, description
 - server.type="binary", server.entry_point references the bundled binary
 - server.mcp_config.command points at ${__dirname}/<entry_point>
+- server.mcp_config.args is empty for generated binary MCPBs
+- server.mcp_config.env maps each env var to its lower-case user_config key
 - user_config keys (when present) match auth_env_vars in .printing-press.json
 - cli_binary, when present, matches the CLI name from .printing-press.json
 - compatibility.platforms is a non-empty list
@@ -65,6 +67,11 @@ def validate(cli_dir: Path) -> list[str]:
     cmd = (server.get("mcp_config") or {}).get("command", "")
     if "${__dirname}" not in cmd:
         problems.append(f'server.mcp_config.command should contain ${{__dirname}} (got {cmd!r})')
+    args = (server.get("mcp_config") or {}).get("args")
+    if args not in ([], None):
+        problems.append(
+            f"server.mcp_config.args should be empty for generated binary MCPBs (got {args!r})"
+        )
 
     expected_mcp = pp.get("mcp_binary")
     if expected_mcp:
@@ -94,6 +101,18 @@ def validate(cli_dir: Path) -> list[str]:
         missing = declared_envs - uc_envs
         if missing:
             problems.append(f"user_config missing entries for {sorted(missing)}")
+    mcp_env = (server.get("mcp_config") or {}).get("env") or {}
+    for env_name, env_value in mcp_env.items():
+        expected_key = env_name.lower()
+        expected_ref = f"${{user_config.{expected_key}}}"
+        if expected_key not in user_config:
+            problems.append(
+                f"server.mcp_config.env {env_name!r} references missing user_config key {expected_key!r}"
+            )
+        if env_value != expected_ref:
+            problems.append(
+                f"server.mcp_config.env {env_name!r} should map to {expected_ref!r} (got {env_value!r})"
+            )
 
     # cli_binary should match .printing-press.json's cli_name when set.
     cli_binary = m.get("cli_binary")

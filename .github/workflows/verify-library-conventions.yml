@@ -34,6 +34,10 @@ name: Verify library conventions
 #    novel feature metadata, and MCP manifests when advertised. The
 #    publish-skill PR body sections are suggested from these artifacts,
 #    but artifact completeness remains the source of truth.
+#
+# 5. Prebuilt MCPB/native binary payloads must not be committed under
+#    library/. Release assets are built from source in GitHub Actions,
+#    then published from that workflow.
 
 on:
   pull_request:
@@ -90,10 +94,16 @@ jobs:
           # the --validate flag existed otherwise runs its own stale tool
           # and dies with "flag provided but not defined: -validate"
           # instead of a real validation message (or a pass).
-          git checkout "${BASE_REMOTE_REF}" -- \
+          for path in \
             .github/scripts/verify-attribution \
+            .github/scripts/verify-binary-payload \
             .github/scripts/verify-publish-package \
             tools/generate-registry
+          do
+            if git cat-file -e "${BASE_REMOTE_REF}:${path}" 2>/dev/null; then
+              git checkout "${BASE_REMOTE_REF}" -- "${path}"
+            fi
+          done
 
       - name: Fail on changes to generated artifacts
         if: github.event_name == 'pull_request'
@@ -183,6 +193,14 @@ jobs:
         run: |
           set -euo pipefail
           python3 .github/scripts/verify-publish-package/verify_publish_package.py --base-ref "${BASE_REMOTE_REF}"
+
+      - name: Block committed MCPB/native binary payloads
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REMOTE_REF: ${{ steps.base.outputs.ref }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/verify-binary-payload/verify_binary_payload.py --base-ref "${BASE_REMOTE_REF}"
 
       - name: go.mod module path matches directory
         run: |

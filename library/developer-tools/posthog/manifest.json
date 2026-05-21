@@ -19,12 +19,12 @@
       "command": "${__dirname}/bin/posthog-pp-mcp",
       "args": [],
       "env": {
-        "POSTHOG_PERSONAL_APIKEY_AUTH": "${user_config.POSTHOG_PERSONAL_APIKEY_AUTH}"
+        "POSTHOG_PERSONAL_APIKEY_AUTH": "${user_config.posthog_personal_apikey_auth}"
       }
     }
   },
   "user_config": {
-    "POSTHOG_PERSONAL_APIKEY_AUTH": {
+    "posthog_personal_apikey_auth": {
       "type": "string",
       "description": "PostHog personal API key (phx_...). Get yours at https://app.posthog.com/settings/user-api-keys",
       "required": true,
