@@ -124,6 +124,16 @@ func BookingPrice(ctx context.Context, listingID, checkin, checkout string, gues
 }
 
 func (c *Client) graphQLGet(ctx context.Context, path string, params url.Values, out *any) error {
+	u, _ := url.Parse(airbnbBase + path)
+	q := u.Query()
+	for k, vals := range params {
+		for _, v := range vals {
+			q.Add(k, v)
+		}
+	}
+	q.Set("extensions", `{"persistedQuery":{"version":1,"sha256Hash":"`+path[strings.LastIndex(path, "/")+1:]+`"}}`)
+	u.RawQuery = q.Encode()
+	apiKey := c.resolveAPIKey()
 	cookies, err := auth.LoadCookies()
 	if err != nil {
 		return err
@@ -134,15 +144,6 @@ func (c *Client) graphQLGet(ctx context.Context, path string, params url.Values,
 	old := c.http.Jar
 	c.http.Jar = jar
 	defer func() { c.http.Jar = old }()
-	u, _ := url.Parse(airbnbBase + path)
-	q := u.Query()
-	for k, vals := range params {
-		for _, v := range vals {
-			q.Add(k, v)
-		}
-	}
-	q.Set("extensions", `{"persistedQuery":{"version":1,"sha256Hash":"`+path[strings.LastIndex(path, "/")+1:]+`"}}`)
-	u.RawQuery = q.Encode()
 	// PATCH: Send Airbnb's public web GraphQL key and browser companion headers.
 	// The Airbnb GraphQL gateway rejects requests without an api key with
 	// {error:"invalid_key", error_code:400}. Send the public web key plus
@@ -151,7 +152,7 @@ func (c *Client) graphQLGet(ctx context.Context, path string, params url.Values,
 	// them, Airbnb's heuristics flag the call as non-browser.
 	headers := map[string]string{
 		"Accept":                           "application/json",
-		"X-Airbnb-API-Key":                 c.resolveAPIKey(),
+		"X-Airbnb-API-Key":                 apiKey,
 		"X-Airbnb-GraphQL-Platform":        "web",
 		"X-Airbnb-GraphQL-Platform-Client": "minimalist-niobe",
 		"X-Airbnb-Supports-Airlock-V2":     "true",
