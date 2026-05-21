@@ -1392,10 +1392,12 @@ func extractID(resource string, obj map[string]any) string {
 // contacts + tags sync) — GHL's API does NOT expose per-tag-application
 // timestamps; we use the contact's dateUpdated as a coarse tagged_at
 // proxy and emit a printable synthetic id field
-// "<contactId>:<url-query-escaped-tag>" so the row upserts idempotently.
-// The row's JSON blob is shaped to match what the
-// store's UpsertContactsTags expects (id + contacts_id + the original
-// tag string + a tagged_at hint), so downstream SQL queries can answer
+// "<contactId>:<url-query-escaped-tag>" so the row stores idempotently.
+// Each contact's derived set replaces its previous set, pruning rows for
+// tags that disappeared from the latest contacts search response. The row's
+// JSON blob is shaped to match the contacts_tags typed table (id +
+// contacts_id + the original tag string + a tagged_at hint), so downstream
+// SQL queries can answer
 // "what tags are on contact X" and "when were contact X's tags last
 // observed" without re-parsing the contacts JSON blob.
 func deriveContactsTagsFromPage(db *store.Store, items []json.RawMessage) error {
@@ -1421,11 +1423,14 @@ func deriveContactsTagsFromPage(db *store.Store, items []json.RawMessage) error 
 		if !ok {
 			continue
 		}
+		var rowJSONs []json.RawMessage
+		var tagNames []string
 		for _, t := range tagsArr {
 			tag, ok := t.(string)
 			if !ok || tag == "" {
 				continue
 			}
+			tagNames = append(tagNames, tag)
 			compositeID := contactID + ":" + url.QueryEscape(tag)
 			row := map[string]any{
 				"id":          compositeID,
@@ -1438,10 +1443,11 @@ func deriveContactsTagsFromPage(db *store.Store, items []json.RawMessage) error 
 			if err != nil {
 				continue
 			}
-			if err := db.UpsertContactsTags(rowJSON); err != nil {
-				upsertErrs = append(upsertErrs, fmt.Errorf("upsert contacts_tags %s: %w", compositeID, err))
-				continue
-			}
+			rowJSONs = append(rowJSONs, rowJSON)
+		}
+		if err := db.ReplaceContactsTagsForContact(contactID, rowJSONs); err != nil {
+			upsertErrs = append(upsertErrs, fmt.Errorf("replace contacts_tags %s (%s): %w", contactID, strings.Join(tagNames, ","), err))
+			continue
 		}
 	}
 	return errors.Join(upsertErrs...)

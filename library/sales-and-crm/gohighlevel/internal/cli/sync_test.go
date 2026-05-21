@@ -85,6 +85,49 @@ func TestDeriveContactsTagsFromPage_UsesPrintableEscapedCompositeID(t *testing.T
 	}
 }
 
+func TestDeriveContactsTagsFromPage_PrunesRemovedTags(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "data.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer db.Close()
+
+	if err := deriveContactsTagsFromPage(db, []json.RawMessage{
+		json.RawMessage(`{"id":"contact-1","dateUpdated":"2026-05-20T00:00:00Z","tags":["alpha","beta"]}`),
+	}); err != nil {
+		t.Fatalf("first deriveContactsTagsFromPage: %v", err)
+	}
+	if err := deriveContactsTagsFromPage(db, []json.RawMessage{
+		json.RawMessage(`{"id":"contact-1","dateUpdated":"2026-05-21T00:00:00Z","tags":["alpha"]}`),
+	}); err != nil {
+		t.Fatalf("second deriveContactsTagsFromPage: %v", err)
+	}
+
+	var typed int
+	if err := db.DB().QueryRow(`SELECT COUNT(*) FROM "contacts_tags" WHERE "contacts_id" = ?`, "contact-1").Scan(&typed); err != nil {
+		t.Fatalf("count contacts_tags: %v", err)
+	}
+	if typed != 1 {
+		t.Fatalf("contacts_tags count = %d, want 1 after pruning removed tag", typed)
+	}
+
+	var tag string
+	if err := db.DB().QueryRow(`SELECT "tag" FROM "contacts_tags" WHERE "contacts_id" = ?`, "contact-1").Scan(&tag); err != nil {
+		t.Fatalf("query remaining tag: %v", err)
+	}
+	if tag != "alpha" {
+		t.Fatalf("remaining tag = %q, want alpha", tag)
+	}
+
+	var generic int
+	if err := db.DB().QueryRow(`SELECT COUNT(*) FROM resources WHERE resource_type = ? AND json_extract(data, '$.contacts_id') = ?`, "contacts_tags", "contact-1").Scan(&generic); err != nil {
+		t.Fatalf("count generic contacts_tags: %v", err)
+	}
+	if generic != 1 {
+		t.Fatalf("generic contacts_tags count = %d, want 1 after pruning removed tag", generic)
+	}
+}
+
 func TestAnnotateLocationsTagsItems_AddsLocationIDForTypedUpsert(t *testing.T) {
 	db, err := store.Open(filepath.Join(t.TempDir(), "data.db"))
 	if err != nil {

@@ -975,6 +975,84 @@ func (s *Store) UpsertContactsTags(data json.RawMessage) error {
 	return tx.Commit()
 }
 
+// ReplaceContactsTagsForContact replaces the derived contacts_tags projection
+// for one contact with the latest tag rows from the contacts search response.
+func (s *Store) ReplaceContactsTagsForContact(contactID string, rows []json.RawMessage) error {
+	if contactID == "" {
+		return fmt.Errorf("missing contacts_id for contacts_tags replacement")
+	}
+
+	type parsedRow struct {
+		id   string
+		obj  map[string]any
+		data json.RawMessage
+	}
+	parsed := make([]parsedRow, 0, len(rows))
+	for _, row := range rows {
+		var obj map[string]any
+		if err := json.Unmarshal(row, &obj); err != nil {
+			return fmt.Errorf("unmarshaling contacts_tags: %w", err)
+		}
+		id := extractObjectID(obj)
+		if id == "" {
+			return fmt.Errorf("missing id for contacts_tags")
+		}
+		parsed = append(parsed, parsedRow{id: id, obj: obj, data: row})
+	}
+
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	existingRows, err := tx.Query(`SELECT id FROM resources WHERE resource_type = ? AND json_extract(data, '$.contacts_id') = ?`, "contacts_tags", contactID)
+	if err != nil {
+		return fmt.Errorf("listing existing contacts_tags resources: %w", err)
+	}
+	var existingIDs []string
+	for existingRows.Next() {
+		var id string
+		if err := existingRows.Scan(&id); err != nil {
+			existingRows.Close()
+			return fmt.Errorf("scanning existing contacts_tags resource: %w", err)
+		}
+		existingIDs = append(existingIDs, id)
+	}
+	if err := existingRows.Err(); err != nil {
+		existingRows.Close()
+		return fmt.Errorf("reading existing contacts_tags resources: %w", err)
+	}
+	if err := existingRows.Close(); err != nil {
+		return fmt.Errorf("closing existing contacts_tags resources: %w", err)
+	}
+
+	for _, id := range existingIDs {
+		if _, err := tx.Exec(`DELETE FROM resources_fts WHERE rowid = ?`, ftsRowID("contacts_tags", id)); err != nil {
+			return fmt.Errorf("deleting contacts_tags FTS row: %w", err)
+		}
+	}
+	if _, err := tx.Exec(`DELETE FROM resources WHERE resource_type = ? AND json_extract(data, '$.contacts_id') = ?`, "contacts_tags", contactID); err != nil {
+		return fmt.Errorf("deleting stale contacts_tags resources: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM "contacts_tags" WHERE "contacts_id" = ?`, contactID); err != nil {
+		return fmt.Errorf("deleting stale contacts_tags rows: %w", err)
+	}
+
+	for _, row := range parsed {
+		if err := s.upsertGenericResourceTx(tx, "contacts_tags", row.id, row.data); err != nil {
+			return err
+		}
+		if err := s.upsertContactsTagsTx(tx, row.id, row.obj, row.data); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
 // upsertTasksTx writes the typed-table portion of a tasks upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.

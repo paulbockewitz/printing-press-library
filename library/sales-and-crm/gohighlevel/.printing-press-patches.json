@@ -39,8 +39,8 @@
         "internal/store/schema_version_test.go",
         "internal/store/upsert_batch_test.go"
       ],
-      "findings_addressed": ["greptile-715-followup-tags-key", "greptile-715-followup-contacts-tags-partial-failure", "greptile-715-followup-printable-composite-id", "greptile-715-followup-indexed-tag-column", "greptile-715-followup-locations-tags-location-id", "greptile-715-followup-sql-read-only-store", "greptile-715-followup-resource-scoped-location-id"],
-      "notes": "Adds tags to pageItemKeys so locations_tags extraction stays deterministic if the envelope gains another array, makes contacts_tags derivation collect all per-tag upsert failures instead of returning on the first failed tag, switches the derived id to a printable URL-escaped tag component, adds an indexed contacts_tags.tag column for tag-name queries, injects the resolved locationId into locations_tags rows before typed upsert, opens the sql command with a read-only SQLite handle, and lets locations_tags use its own resource-scoped locationId."
+      "findings_addressed": ["greptile-715-followup-tags-key", "greptile-715-followup-contacts-tags-partial-failure", "greptile-715-followup-printable-composite-id", "greptile-715-followup-indexed-tag-column", "greptile-715-followup-locations-tags-location-id", "greptile-715-followup-sql-read-only-store", "greptile-715-followup-resource-scoped-location-id", "greptile-715-followup-prune-stale-contact-tags"],
+      "notes": "Adds tags to pageItemKeys so locations_tags extraction stays deterministic if the envelope gains another array, makes contacts_tags derivation collect all per-tag upsert failures instead of returning on the first failed tag, switches the derived id to a printable URL-escaped tag component, adds an indexed contacts_tags.tag column for tag-name queries, injects the resolved locationId into locations_tags rows before typed upsert, opens the sql command with a read-only SQLite handle, lets locations_tags use its own resource-scoped locationId, and replaces each contact's derived contacts_tags set so removed tags are pruned from typed and generic tables."
     }
   ]
 }
