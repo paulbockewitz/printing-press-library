@@ -98,7 +98,16 @@ func (c *Client) Search(ctx context.Context, params SearchParams) ([]Listing, *P
 			}
 			lmap = merged
 		}
-		l := listingFromSearch(lmap, asMap(obj["pricingQuote"]))
+		// PATCH: Treat flat Airbnb SSR search-result cards as their own price quote.
+		// Airbnb's current SSR Apollo cache returns search-result entries
+		// in a flat shape where the listing card carries `structuredDisplayPrice`
+		// directly (no `pricingQuote` envelope). Fall back to `obj` itself so
+		// the price extractor can find it.
+		priceQuote := asMap(obj["pricingQuote"])
+		if len(priceQuote) == 0 {
+			priceQuote = obj
+		}
+		l := listingFromSearch(lmap, priceQuote)
 		if l.ID != "" {
 			l.URL = airbnbBase + "/rooms/" + l.ID
 		}

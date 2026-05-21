@@ -1,7 +1,29 @@
 {
   "schema_version": 1,
-  "applied_at": "2026-05-08",
+  "applied_at": "2026-05-19",
   "base_run_id": "2026-05-03T06:03:12.15145Z",
   "base_printing_press_version": "3.6.1",
-  "patches": []
+  "patches": [
+    {
+      "id": "ssr-search-flat-shape",
+      "summary": "Extract price, reviews, and location lines from the flat Airbnb SSR Apollo cache shape; legacy nested envelope kept as fallback.",
+      "reason": "Airbnb's current SSR ships each search-result entry as a flat listing card (`structuredDisplayPrice` at the top level, no `pricingQuote` envelope). The original parser looked for `pricingQuote.structuredStayDisplayPrice` and a nested `listing` object, so every search result returned null for price, per-night, and review-count fields. `reviewsCount` now ships null routinely; we backfill from `avgRatingLocalized` (\"4.98 (576)\") and `avgRatingA11yLabel`.",
+      "files": [
+        "internal/source/airbnb/client.go",
+        "internal/source/airbnb/extract.go",
+        "internal/source/airbnb/extract_test.go"
+      ],
+      "validated_outcome": "Live `airbnb-listing search Mercer-Island... --agent` now returns populated `primary_price`, `per_night_price`, and `reviews_count` on every result. Unit tests cover both flat (current) and nested (legacy) SSR shapes."
+    },
+    {
+      "id": "graphql-api-key-header",
+      "summary": "Send X-Airbnb-API-Key (and companion X-Airbnb-* headers) on every GraphQL request; scrape the key from homepage SSR with a constant fallback.",
+      "reason": "Airbnb's GraphQL gateway rejects unauthenticated requests with `{error:\"invalid_key\", error_code:400}`. The original `graphQLGet` sent only `Accept: application/json` plus the cookie jar, so `StaysPdpBookItQuery`, `WishlistIndexPageQuery`, and `WishlistItemsAsyncQuery` all 400'd. Restoring the public web API key fixes the headline blocker for `cheapest`, `plan`, `compare`, and `watch`.",
+      "files": [
+        "internal/source/airbnb/graphql.go",
+        "internal/source/airbnb/graphql_test.go"
+      ],
+      "validated_outcome": "Live `airbnb-listing get 18413186 --checkin ... --checkout ...` no longer returns the `invalid_key` error. The scraper falls back to the well-known constant `d306zoyjsyarp7ifhu67rjxn52tv0t20` if the homepage scrape fails (bot-block, network error)."
+    }
+  ]
 }
