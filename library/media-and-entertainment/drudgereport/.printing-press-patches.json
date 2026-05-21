@@ -43,6 +43,14 @@
       "files": [
         "internal/cli/digest.go"
       ]
+    },
+    {
+      "id": "greptile-2026-05-21-digest-longest-splash-contiguous",
+      "summary": "digest's 'longest-tenured splash' now uses contiguous-run length, not gross MIN/MAX.",
+      "reason": "Same MIN/MAX conflation bug fixed in tenure.go applied here too: a story demoted from splash and re-promoted previously got credited with the entire span between first and last splash appearance. Now uses the gap-and-island pattern keyed on the most recent non-splash row.",
+      "files": [
+        "internal/cli/digest.go"
+      ]
     }
   ]
 }

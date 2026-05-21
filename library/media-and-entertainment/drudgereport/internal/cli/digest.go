@@ -134,24 +134,58 @@ func queryDigest(cmd *cobra.Command, db *sql.DB, windowName string, window time.
 func queryDigestLongestSplash(cmd *cobra.Command, db *sql.DB, startRaw, endRaw string) (map[string]any, error) {
 	var storyID, title, url string
 	var firstSeen, lastSeen sql.NullString
+	// PATCH(greptile-2026-05-21:digest-longest-splash-contiguous): the digest's
+	// "longest-tenured splash" headline must reflect the longest CONTIGUOUS
+	// splash run in the window, not the gross MIN/MAX of splash appearances.
+	// A story that was splash Jan 1-5, demoted Jan 6, re-promoted Jan 8 has
+	// a real splash run of ~2 days, not 10+. Reuse the gap-and-island pattern
+	// from tenure.go: tag each splash row with the most recent non-splash
+	// captured_at (or epoch), GROUP BY (story_id, marker) to get per-run
+	// MIN/MAX, then rank by run length.
 	err := db.QueryRowContext(cmd.Context(),
-		`WITH splash_runs AS (
-			SELECT story_id, MIN(captured_at) AS first_seen_at, MAX(captured_at) AS last_seen_at
+		`WITH splash_rows AS (
+			SELECT story_id, captured_at
 			FROM drudge_story
-			WHERE slot = ? AND captured_at >= ? AND captured_at < ?
-			GROUP BY story_id
+			WHERE slot = ?
+			  AND captured_at >= ?
+			  AND captured_at < ?
+		),
+		run_marked AS (
+			SELECT
+				sr.story_id,
+				sr.captured_at,
+				COALESCE((
+					SELECT MAX(captured_at) FROM drudge_story
+					WHERE story_id = sr.story_id
+					  AND slot != ?
+					  AND captured_at < sr.captured_at
+				), '1970-01-01T00:00:00Z') AS run_marker
+			FROM splash_rows sr
+		),
+		runs AS (
+			SELECT
+				story_id,
+				MIN(captured_at) AS first_seen_at,
+				MAX(captured_at) AS last_seen_at,
+				(strftime('%s', MAX(captured_at)) - strftime('%s', MIN(captured_at))) AS run_length_s
+			FROM run_marked
+			GROUP BY story_id, run_marker
 		)
-		SELECT r.story_id, s.title, s.url, r.first_seen_at, r.last_seen_at
-		FROM splash_runs r
-		JOIN drudge_story s ON s.rowid = (
-			SELECT rowid FROM drudge_story
-			WHERE story_id = r.story_id
-			ORDER BY captured_at DESC
-			LIMIT 1
-		)
-		ORDER BY (strftime('%s', r.last_seen_at) - strftime('%s', r.first_seen_at)) DESC
+		SELECT r.story_id,
+		       COALESCE(s.title, '') AS title,
+		       COALESCE(s.url, '') AS url,
+		       r.first_seen_at,
+		       r.last_seen_at
+		FROM runs r
+		LEFT JOIN drudge_story s
+			ON s.story_id = r.story_id
+		   AND s.captured_at = (
+				SELECT MAX(captured_at) FROM drudge_story
+				WHERE story_id = r.story_id
+		   )
+		ORDER BY r.run_length_s DESC, r.first_seen_at ASC
 		LIMIT 1`,
-		string(drudge.SlotSplash), startRaw, endRaw,
+		string(drudge.SlotSplash), startRaw, endRaw, string(drudge.SlotSplash),
 	).Scan(&storyID, &title, &url, &firstSeen, &lastSeen)
 	if err == sql.ErrNoRows {
 		return nil, nil
