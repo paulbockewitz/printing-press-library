@@ -252,6 +252,26 @@ func queryDigestRedSurges(cmd *cobra.Command, db *sql.DB, startRaw, endRaw strin
 				return nil, err
 			}
 		}
+		// PATCH(greptile-2026-05-21:digest-total-tenure): total_tenure_seconds
+		// must be the full lifetime of the story on Drudge (first to last
+		// captured_at, regardless of slot), not the red-window duration.
+		// Previously this duplicated redTenureSeconds, making the two
+		// fields meaningless to differentiate.
+		var totalFirstSeen, totalLastSeen sql.NullString
+		if err := db.QueryRowContext(cmd.Context(),
+			`SELECT MIN(captured_at), MAX(captured_at) FROM drudge_story WHERE story_id = ?`,
+			storyID,
+		).Scan(&totalFirstSeen, &totalLastSeen); err != nil {
+			return nil, fmt.Errorf("query story total tenure for %s: %w", storyID, err)
+		}
+		totalTenureSeconds := int64(0)
+		if totalFirstSeen.Valid && totalLastSeen.Valid {
+			var err error
+			totalTenureSeconds, err = secondsBetween(totalFirstSeen.String, totalLastSeen.String)
+			if err != nil {
+				return nil, err
+			}
+		}
 		count := int64(0)
 		if redSnapshots.Valid {
 			count = redSnapshots.Int64
@@ -265,7 +285,7 @@ func queryDigestRedSurges(cmd *cobra.Command, db *sql.DB, startRaw, endRaw strin
 			"last_red_at":          nullStringText(lastRed),
 			"red_snapshot_count":   count,
 			"red_tenure_seconds":   redTenureSeconds,
-			"total_tenure_seconds": redTenureSeconds,
+			"total_tenure_seconds": totalTenureSeconds,
 		})
 	}
 	if err := rows.Err(); err != nil {

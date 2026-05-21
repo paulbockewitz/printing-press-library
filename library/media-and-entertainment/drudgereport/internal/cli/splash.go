@@ -101,8 +101,25 @@ func splashTenureSeconds(ctx context.Context, storyID string, now time.Time) (in
 		return 0, fmt.Errorf("ensure drudge schema for splash tenure: %w", err)
 	}
 
+	// PATCH(greptile-2026-05-21:splash-tenure-slot-filter): tenure must be
+	// measured from the story's first appearance on the SPLASH slot, not its
+	// first appearance in any slot. A story promoted to splash from a column
+	// previously reported inflated tenure (time since first column appearance
+	// instead of time since promotion). Use the contiguous-run pattern from
+	// tenure.go: earliest splash row strictly after the most recent non-splash
+	// row for this story, or the all-time MIN(captured_at AND slot='splash')
+	// if the story has never been off splash.
 	var raw sql.NullString
-	err = s.DB().QueryRowContext(ctx, `SELECT MIN(captured_at) FROM drudge_story WHERE story_id = ?`, storyID).Scan(&raw)
+	err = s.DB().QueryRowContext(ctx,
+		`SELECT MIN(captured_at) FROM drudge_story
+		 WHERE story_id = ?
+		   AND slot = ?
+		   AND captured_at > COALESCE((
+		     SELECT MAX(captured_at) FROM drudge_story
+		     WHERE story_id = ? AND slot != ?
+		   ), '1970-01-01T00:00:00Z')`,
+		storyID, string(drudge.SlotSplash), storyID, string(drudge.SlotSplash),
+	).Scan(&raw)
 	if err != nil {
 		return 0, fmt.Errorf("query splash tenure: %w", err)
 	}

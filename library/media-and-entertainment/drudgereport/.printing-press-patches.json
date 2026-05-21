@@ -27,6 +27,22 @@
       "files": [
         "internal/cli/on_date.go"
       ]
+    },
+    {
+      "id": "greptile-2026-05-21-splash-tenure-slot-filter",
+      "summary": "`splash` computes tenure from first SPLASH appearance (contiguous run), not first appearance in any slot.",
+      "reason": "splashTenureSeconds queried MIN(captured_at) without a slot filter, inflating tenure for stories promoted to splash from columns. Applied the same contiguous-run pattern used in tenure.go: smallest splash captured_at strictly after the most recent non-splash row.",
+      "files": [
+        "internal/cli/splash.go"
+      ]
+    },
+    {
+      "id": "greptile-2026-05-21-digest-total-tenure",
+      "summary": "`digest`'s biggest-red-surges section reports a real total_tenure_seconds (story lifetime) instead of duplicating red_tenure_seconds.",
+      "reason": "queryDigestRedSurges set total_tenure_seconds to redTenureSeconds, making the two fields identical. Added a per-story MIN/MAX(captured_at) query against drudge_story so total_tenure_seconds reflects the full lifetime on Drudge regardless of color.",
+      "files": [
+        "internal/cli/digest.go"
+      ]
     }
   ]
 }
