@@ -5,6 +5,33 @@
   "base_printing_press_version": "4.5.1",
   "patches": [
     {
+      "id": "reminders-dry-run-must-not-write",
+      "summary": "reminders create + reminders cancel now skip the userdata.write call when --dry-run is set; the prior code only decorated the response envelope after the write had already executed.",
+      "reason": "Greptile P1 round-3 on PR #595: flags.dryRun was checked AFTER c.Post(path, body), so the snooze (create) or unreminder (cancel) write had already fired by the time the dry-run flag was honored. Gated the userdata.write call on !flags.dryRun and synthesize a {dry_run, path, method, planned_body, would_send_write} preview when dry-run is set. The userdata.read call earlier in reminders create stays live because it is a read-shaped POST and lets the preview include the real messageIds the write would have used.",
+      "files": [
+        "internal/cli/reminders_create.go",
+        "internal/cli/reminders_cancel.go"
+      ],
+      "validated_outcome": "go build / go vet / 566 tests / 17 packages green; verify-skill clean."
+    },
+    {
+      "id": "awaiting-reply-exclude-empty-from-default",
+      "summary": "Extend the empty-from exclusion in ListAwaitingReply to ALL modes, not just --external-only.",
+      "reason": "Greptile P1 round-3 on PR #595: history.list stubs (rows inserted by ApplyHistoryDelta before a messages.get backfill) have empty from/subject/snippet, so default-mode awaiting-reply surfaced a useless `<blank> awaits your reply` row. The prior PATCH suppressed these only under --external-only on the grounds that a missing-from row could not be classified as external vs internal; the default mode kept them. Greptile flagged that even in default mode the row is noise. Extended the suppression to all modes. The cost is the same documented transient false negative (one poll cycle until backfill); the savings is no garbage row in the default response. The existing TestListAwaitingReplyExcludesEmptyFromUnderExternalOnly test was updated to assert the unbounded-mode exclusion too.",
+      "files": [
+        "internal/store/awaiting_reply.go",
+        "internal/store/awaiting_reply_test.go"
+      ],
+      "validated_outcome": "go build / go vet / 566 tests / 17 packages green."
+    },
+    {
+      "id": "stdout-swap-deferred-with-writer-refactor",
+      "summary": "Recording the os.Stdout/os.Stderr swap in runSyncResourceQuiet as a known limitation deferred to a syncResource(io.Writer, ...) refactor across all 3 call sites.",
+      "reason": "Greptile P1 round-3 on PR #595 raised that swapping process-global os.Stdout/Stderr affects every goroutine in the process, not just the runSyncResourceQuiet caller. The existing mitigation (sync.Mutex serializing the swap; PATCH comment naming the constraint) bounds the blast radius to the autorefresh path which is single-goroutine today. The principled fix is to thread an io.Writer through syncResource(c, db, resource, sinceTS, full, maxPages, latestOnly, userParams) so output goes to a per-call sink. That touches 3 caller sites (channel_workflow, sync, sync_autorefresh) and ~15 fmt.Fprintf(os.Stdout, ...) emissions inside syncResource and its helpers; out of scope for this PR.",
+      "files": [],
+      "validated_outcome": "No code change; documented limitation."
+    },
+    {
       "id": "host-key-binding-detection",
       "summary": "Strip the 32-byte SHA-256(host_key) prefix only when it matches the computed hash so older-Chrome cookies are not silently truncated.",
       "reason": "The 32-byte plaintext prefix is added by Chrome's M120+ cookie host-binding feature; older Chrome versions write cookies without it. The unconditional strip discarded the first 32 chars of every cookie value, so the session token sent to accounts.superhuman.com was always wrong and RefreshFromChromeCookies never succeeded. We now verify the prefix matches sha256(host) before stripping (greptile P1).",

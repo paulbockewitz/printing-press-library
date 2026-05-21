@@ -80,9 +80,26 @@ alias for --thread-id; pass --thread-id directly going forward.`,
 				}
 			}
 
-			data, statusCode, err := c.Post(path, body)
-			if err != nil {
-				return classifyAPIError(err, flags)
+			// PATCH: --dry-run must not fire the userdata.write delete.
+			// Same fix shape as reminders create — greptile P1 on PR #595.
+			var data []byte
+			var statusCode int
+			if flags.dryRun {
+				preview := map[string]any{
+					"dry_run":          true,
+					"path":             path,
+					"method":           "POST",
+					"planned_body":     body,
+					"would_send_write": true,
+				}
+				data, _ = json.Marshal(preview)
+				statusCode = 0
+			} else {
+				var err error
+				data, statusCode, err = c.Post(path, body)
+				if err != nil {
+					return classifyAPIError(err, flags)
+				}
 			}
 			if wantsHumanTable(cmd.OutOrStdout(), flags) {
 				var items []map[string]any

@@ -48,8 +48,11 @@ func TestListAwaitingReplyExcludesEmptyFromUnderExternalOnly(t *testing.T) {
 		t.Fatalf("threads = %+v, want only t1 (mStub must be excluded under --external-only)", threads)
 	}
 
-	// Sanity: WITHOUT --external-only, both rows survive (stub from
-	// history delta is still tracked, just not filtered).
+	// Empty-from history-delta stubs are now excluded in ALL modes,
+	// not just --external-only. A row with empty from/subject/snippet
+	// gives the user no actionable signal; suppress it until the row
+	// is enriched by a subsequent messages.get backfill (greptile P1
+	// on PR #595 round-2).
 	allThreads, err := s.ListAwaitingReply(context.Background(), AwaitingReplyFilter{
 		AccountEmail: "user@example.com",
 		Since:        now.Add(-24 * time.Hour),
@@ -59,8 +62,8 @@ func TestListAwaitingReplyExcludesEmptyFromUnderExternalOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListAwaitingReply unbounded: %v", err)
 	}
-	if len(allThreads) != 2 {
-		t.Fatalf("unbounded threads = %+v, want both rows", allThreads)
+	if len(allThreads) != 1 || allThreads[0].ThreadID != "t1" {
+		t.Fatalf("unbounded threads = %+v, want only t1 (empty-from stub excluded)", allThreads)
 	}
 }
 

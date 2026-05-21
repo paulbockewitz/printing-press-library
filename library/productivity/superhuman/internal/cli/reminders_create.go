@@ -129,9 +129,31 @@ reminder if a reply arrives first.`,
 				}
 			}
 
-			data, statusCode, err := c.Post(path, body)
-			if err != nil {
-				return classifyAPIError(err, flags)
+			// PATCH: --dry-run must not fire the userdata.write. The
+			// envelope at line ~174 only decorates the response with
+			// `dry_run: true` AFTER the write has already executed,
+			// which was greptile P1 on PR #595. Skip the actual POST
+			// when dry-run is set and synthesize a planned-payload
+			// response so the user can preview the operation without
+			// snoozing the thread.
+			var data []byte
+			var statusCode int
+			if flags.dryRun {
+				preview := map[string]any{
+					"dry_run":          true,
+					"path":             path,
+					"method":           "POST",
+					"planned_body":     body,
+					"would_send_write": true,
+				}
+				data, _ = json.Marshal(preview)
+				statusCode = 0
+			} else {
+				var err error
+				data, statusCode, err = c.Post(path, body)
+				if err != nil {
+					return classifyAPIError(err, flags)
+				}
 			}
 			if wantsHumanTable(cmd.OutOrStdout(), flags) {
 				var items []map[string]any
