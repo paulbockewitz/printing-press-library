@@ -18,9 +18,27 @@
     },
     {
       "id": "doctor-sectioned-output",
-      "summary": "doctor.go emits System / Library / Assets sections with colored pass/fail checks.",
-      "reason": "Agents need to verify macOS, Photos.app, library path, schema, and asset count before running any query. A structured pre-flight keeps error surfaces small.",
+      "summary": "doctor.go emits System / Library / Assets / Messages sections with colored pass/fail checks.",
+      "reason": "Agents need to verify macOS, Photos.app, library path, schema, asset count, and chat.db access before running any query. A structured pre-flight keeps error surfaces small.",
       "files": ["internal/cli/doctor.go"]
+    },
+    {
+      "id": "messages-readonly-chatdb",
+      "summary": "messages_db.go opens ~/Library/Messages/chat.db read-only via the file: URI prefix with mode=ro and _query_only=1 PRAGMA.",
+      "reason": "chat.db is a system-owned SQLite database read by imagent in WAL mode. The file: URI prefix is load-bearing on modernc.org/sqlite; bare ?mode=ro is silently dropped and the driver returns a read-write handle. _query_only=1 is a second belt at the connection level.",
+      "files": ["internal/cli/messages_db.go"]
+    },
+    {
+      "id": "messages-attributedbody-heuristic",
+      "summary": "messages_decode.go vendors a ~150-line MIT-licensed heuristic typedstream parser for the attributedBody column.",
+      "reason": "Since macOS 11+, message.text is often NULL and the actual content lives in attributedBody (an NSArchiver typedstream blob, not a binary plist). The Go ecosystem's full typedstream parsers are GPL/AGPL-licensed; a small MIT-licensed heuristic ported from teslashibe/imessage-go covers the dominant message shape without license contamination or new go.mod entries.",
+      "files": ["internal/cli/messages_decode.go", "internal/cli/messages_decode_test.go"]
+    },
+    {
+      "id": "messages-fda-doctor-check",
+      "summary": "messages_db.go classifies EPERM and modernc.org/sqlite's SQLITE_CANTOPEN surrogate as a Full Disk Access denial; doctor.go's Messages section surfaces it with copy-paste remediation.",
+      "reason": "macOS TCC has no public Go API and modernc.org/sqlite does not always surface the underlying EPERM (it reports TCC denials as SQLITE_CANTOPEN with surrogate text 'out of memory (14)'). Detecting the broader error shape gives users a clear, actionable error instead of a confusing 'database is corrupt' message. The doctor section warns rather than fails so Photos-only users are not blocked.",
+      "files": ["internal/cli/messages_db.go", "internal/cli/doctor.go"]
     }
   ]
 }
