@@ -20,6 +20,7 @@ run "icloud-pp-cli doctor" if any command fails with a permission error.`,
 	messages.AddCommand(newMessagesListChatsCmd(f))
 	messages.AddCommand(newMessagesSearchCmd(f))
 	messages.AddCommand(newMessagesStatsCmd(f))
+	messages.AddCommand(newMessagesExportCmd(f))
 
 	return messages
 }
