@@ -266,7 +266,7 @@ func (s *Store) ApplyHistoryDelta(ctx context.Context, delta *gmail.HistoryRespo
 			if msg.HistoryID == "" {
 				msg.HistoryID = record.ID
 			}
-			if err := upsertGmailMessageTx(ctx, tx, msg); err != nil {
+			if err := upsertGmailMessageStubTx(ctx, tx, msg); err != nil {
 				return nil, err
 			}
 			result.Added++
@@ -323,6 +323,54 @@ func storedMessageFromHistory(accountEmail string, msg gmail.HistoryMessage) Sto
 		InternalDate: internalDate,
 		Data:         raw,
 	}
+}
+
+// upsertGmailMessageStubTx writes a minimal row for a newly-observed
+// message ID, or refreshes only the fields a history delta actually
+// carries (label_ids, history_id, thread_id, snippet, internal_date)
+// when the row already exists. It never overwrites from/to/cc/subject/
+// body_*/rfc822_id/data with the empty values a HistoryMessage carries,
+// so a previously-fetched complete row stays intact when the same
+// message reappears in a messagesAdded history record.
+func upsertGmailMessageStubTx(ctx context.Context, tx *sql.Tx, msg StoredMessage) error {
+	if msg.ID == "" {
+		return nil
+	}
+	labelJSON, err := json.Marshal(msg.LabelIDs)
+	if err != nil {
+		return fmt.Errorf("marshal labels for %s: %w", msg.ID, err)
+	}
+	data := msg.Data
+	if len(data) == 0 {
+		data, err = json.Marshal(msg)
+		if err != nil {
+			return fmt.Errorf("marshal stub message data for %s: %w", msg.ID, err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO "messages" (
+		"id", "data", "synced_at", "thread_id", "account_email", "label_ids",
+		"from", "to", "cc", "subject", "snippet", "body_plain", "body_html",
+		"rfc822_id", "history_id", "internal_date"
+	) VALUES (?, ?, CURRENT_TIMESTAMP, ?, ?, ?, '', '', '', '', ?, '', '', '', ?, ?)
+	ON CONFLICT("id") DO UPDATE SET
+		"synced_at" = CURRENT_TIMESTAMP,
+		"label_ids" = excluded."label_ids",
+		"history_id" = excluded."history_id",
+		"thread_id" = CASE WHEN excluded."thread_id" != '' THEN excluded."thread_id" ELSE "messages"."thread_id" END,
+		"snippet" = CASE WHEN excluded."snippet" != '' THEN excluded."snippet" ELSE "messages"."snippet" END,
+		"internal_date" = CASE WHEN excluded."internal_date" != 0 THEN excluded."internal_date" ELSE "messages"."internal_date" END`,
+		msg.ID,
+		string(data),
+		msg.ThreadID,
+		msg.AccountEmail,
+		string(labelJSON),
+		msg.Snippet,
+		msg.HistoryID,
+		msg.InternalDate,
+	); err != nil {
+		return fmt.Errorf("upsert stub message %s: %w", msg.ID, err)
+	}
+	return nil
 }
 
 func upsertGmailMessageTx(ctx context.Context, tx *sql.Tx, msg StoredMessage) error {

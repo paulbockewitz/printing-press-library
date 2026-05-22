@@ -69,7 +69,7 @@ func TestThreadsListIntersectWithStdin(t *testing.T) {
 	root.SetOut(&outBuf)
 	root.SetErr(&errBuf)
 	root.SetIn(strings.NewReader("t2\n"))
-	root.SetArgs([]string{"--config", configPath, "--json", "threads", "list", "--intersect-with-stdin"})
+	root.SetArgs([]string{"--config", configPath, "--json", "threads", "list", "--type", "sent", "--intersect-with-stdin"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("threads list intersect stdin: %v stderr=%s", err, errBuf.String())
 	}

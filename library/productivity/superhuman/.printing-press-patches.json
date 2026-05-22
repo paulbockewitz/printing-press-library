@@ -172,6 +172,25 @@
         "internal/cli/send_test.go"
       ],
       "validated_outcome": "TestBuildSendReminderValidation covers 5m success; TestSend_ReminderFlagErrors covers 0s rejection."
+    },
+    {
+      "id": "history-delta-stub-upsert",
+      "summary": "ApplyHistoryDelta now writes a minimal stub via upsertGmailMessageStubTx instead of the full upsert, so a previously-fetched complete row stays intact when the same message reappears in a messagesAdded record.",
+      "reason": "storedMessageFromHistory builds a StoredMessage from gmail.HistoryMessage, which only carries id/threadId/labelIds/snippet/historyId/internalDate. Routing that through upsertGmailMessageTx ON CONFLICT DO UPDATE overwrote from/to/cc/subject/body with empty strings every time a history poll fired for a known message (greptile P1 on PR #595). The new stub upsert inserts the row on first sight, then on conflict only refreshes label_ids/history_id/synced_at (always) and thread_id/snippet/internal_date (only when the incoming value is non-empty / non-zero). data column is preserved as-is from the original full fetch.",
+      "files": [
+        "internal/store/messages.go"
+      ],
+      "validated_outcome": "go build + go vet + go test ./... pass (566/17). Full upsert path unchanged for complete-message ingestion."
+    },
+    {
+      "id": "threads-list-local-unsupported-types",
+      "summary": "threads list local-filter path now maps --type draft to DRAFT and errors out for done/archived instead of silently returning unfiltered results.",
+      "reason": "localThreadTypeLabel returned the empty string for draft, done, and archived, so combining those with --label / --participants-file / --intersect-with-stdin dropped the type filter entirely (greptile P1 on PR #595). draft has a single positive label (DRAFT) the existing filter can express; done and archived need negative-label semantics (not-INBOX, not-INBOX/SENT/SPAM/TRASH) the positive-only label index cannot represent, so the local path now returns a clear error pointing the user at the Gmail-passthrough route that supports them natively.",
+      "files": [
+        "internal/cli/threads_list.go",
+        "internal/cli/threads_list_intersect_test.go"
+      ],
+      "validated_outcome": "go build + go vet + go test ./... pass (566/17). Existing intersect-with-stdin test updated to pass --type sent explicitly (it was depending on the silently-dropped default-draft behavior)."
     }
   ]
 }

@@ -213,6 +213,9 @@ func runThreadsListLocalFiltered(cmd *cobra.Command, flags *rootFlags, listType,
 	if !supportedThreadTypes[listType] {
 		return fmt.Errorf("threads list: unsupported --type %q (valid: %s)", listType, strings.Join(validThreadTypes(), ", "))
 	}
+	if localUnsupportedTypes[listType] {
+		return fmt.Errorf("threads list: --type %q cannot be combined with --label / --participants-file / --intersect-with-stdin (the local filter has no negative-label semantics). Drop the local-filter flag to route through Gmail's threads.list, which supports this type natively", listType)
+	}
 	var participants, threadIDs []string
 	if participantsFile != "" {
 		emails, err := readParticipantsFile(participantsFile)
@@ -274,9 +277,22 @@ func localThreadTypeLabel(listType string) string {
 		return "TRASH"
 	case "important":
 		return "IMPORTANT"
+	case "draft":
+		return "DRAFT"
 	default:
 		return ""
 	}
+}
+
+// localUnsupportedTypes lists --type values whose semantics ("not in INBOX",
+// "everywhere minus INBOX/SENT/SPAM/TRASH") need negative-label filters the
+// positive-only local label index cannot express. Combining them with
+// --label / --participants-file / --intersect-with-stdin previously dropped
+// the type filter silently and returned every local thread that matched the
+// other constraints.
+var localUnsupportedTypes = map[string]bool{
+	"done":     true,
+	"archived": true,
 }
 
 func readParticipantsFile(path string) ([]string, error) {
