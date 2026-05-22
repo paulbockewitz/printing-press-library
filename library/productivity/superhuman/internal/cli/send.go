@@ -36,7 +36,9 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"mime"
 	"net/http"
+	"net/mail"
 	"os"
 	"strconv"
 	"strings"
@@ -903,6 +905,33 @@ func formatAddressString(email, name string) string {
 	return fmt.Sprintf("%s <%s>", name, email)
 }
 
+// PATCH(2026-05-22-001 U3): encodeRFC2047Subject wraps a Subject value as an
+// RFC 2047 encoded-word when it contains non-ASCII bytes. Pure-ASCII input is
+// returned unchanged, so existing tests asserting `Subject: <plain ascii>`
+// keep passing. The 2026-05-22 Gradle send shipped `→` (U+2192) as raw UTF-8
+// in the RFC822 header lane, which Gmail's MTA and downstream receivers each
+// reinterpreted as CP-1252 and re-encoded; the result was a two-round
+// mojibake cascade visible to recipients as `Ã¢Â†Â'`. mime.BEncoding.Encode
+// produces the standards-mandated `=?UTF-8?B?<base64>?=` form that survives
+// transit unmangled.
+func encodeRFC2047Subject(subject string) string {
+	return mime.BEncoding.Encode("UTF-8", subject)
+}
+
+// PATCH(2026-05-22-001 U3): formatRFC822FromHeader wraps the wire-side From
+// header in mail.Address so non-ASCII display names auto-encode as RFC 2047
+// encoded-words. ASCII names get the standard `"Name" <email>` quoting from
+// the stdlib. This is the wire-construction counterpart to
+// formatAddressString, which stays unchanged for the JSON-marshaled bundle
+// paths (steps 1+2) where raw UTF-8 already survives.
+func formatRFC822FromHeader(email, name string) string {
+	if name == "" {
+		return email
+	}
+	addr := &mail.Address{Name: name, Address: email}
+	return addr.String()
+}
+
 // joinAddresses concatenates the input emails with commas. Used for the
 // fingerprint.to / fingerprint.cc fields, which the bundle records as
 // comma-joined recipient strings (not arrays).
@@ -1160,9 +1189,15 @@ func sendViaGmailAPI(ctx context.Context, accessToken, fromDisplay string, in se
 		return "", fmt.Errorf("sendViaGmailAPI: no OAuth access token; re-run 'auth login --disk' to capture")
 	}
 
+	// PATCH(2026-05-22-001 U3): RFC 2047 encode the wire-side From + Subject
+	// headers so non-ASCII bytes survive transit. The 2026-05-22 Gradle send
+	// reproduced the two-round CP-1252 → UTF-8 cascade on `→` in the subject;
+	// encodeRFC2047Subject + formatRFC822FromHeader are pure pass-through for
+	// pure-ASCII input.
+	fromEmailH, fromNameH := splitAddressLine(fromDisplay, "")
 	headerLines := []string{
 		"MIME-Version: 1.0",
-		"From: " + fromDisplay,
+		"From: " + formatRFC822FromHeader(fromEmailH, fromNameH),
 		"To: " + strings.Join(in.To, ", "),
 	}
 	if len(in.Cc) > 0 {
@@ -1172,7 +1207,7 @@ func sendViaGmailAPI(ctx context.Context, accessToken, fromDisplay string, in se
 		headerLines = append(headerLines, "Bcc: "+strings.Join(in.Bcc, ", "))
 	}
 	headerLines = append(headerLines,
-		"Subject: "+in.Subject,
+		"Subject: "+encodeRFC2047Subject(in.Subject),
 		"Content-Type: text/html; charset=utf-8",
 		"",
 		renderBody(in.Body, in.HTMLBody),
@@ -1246,9 +1281,13 @@ func sendGmailWithRefresh(
 		return "", fmt.Errorf("sendGmailWithRefresh: no OAuth access token; re-run 'auth login --disk' to capture")
 	}
 
+	// PATCH(2026-05-22-001 U3): RFC 2047 encode the wire-side From + Subject
+	// headers. See sendViaGmailAPI for the full reasoning; the two callers
+	// have to stay in lockstep because the test seam can route to either.
+	fromEmailH, fromNameH := splitAddressLine(fromDisplay, "")
 	headerLines := []string{
 		"MIME-Version: 1.0",
-		"From: " + fromDisplay,
+		"From: " + formatRFC822FromHeader(fromEmailH, fromNameH),
 		"To: " + strings.Join(in.To, ", "),
 	}
 	if len(in.Cc) > 0 {
@@ -1258,7 +1297,7 @@ func sendGmailWithRefresh(
 		headerLines = append(headerLines, "Bcc: "+strings.Join(in.Bcc, ", "))
 	}
 	headerLines = append(headerLines,
-		"Subject: "+in.Subject,
+		"Subject: "+encodeRFC2047Subject(in.Subject),
 		"Content-Type: text/html; charset=utf-8",
 		"",
 		renderBody(in.Body, in.HTMLBody),
