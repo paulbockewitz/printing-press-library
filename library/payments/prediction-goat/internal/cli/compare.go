@@ -212,22 +212,42 @@ func lookupRawMarket(cmd *cobra.Command, db *store.Store, resourceType, id strin
 }
 
 func loadCompareMarkets(cmd *cobra.Command, db *store.Store, topic string, limit int) ([]rawMarket, []rawMarket, error) {
-	rows, err := db.DB().QueryContext(cmd.Context(), `SELECT r.resource_type, r.id, r.data FROM resources r
-JOIN resources_fts f ON r.id = f.id AND r.resource_type = f.resource_type
-WHERE resources_fts MATCH ?
-AND r.resource_type IN ('markets','kalshi_markets')
-ORDER BY rank LIMIT ?`, topicFTSQuery(topic), limit)
+	// Fetch each venue independently so a venue with markedly higher
+	// FTS5 token frequency for the topic can't crowd the other out via
+	// a combined LIMIT. The single-query shape had a known failure mode
+	// where the top `limit` rows could all come from one venue when its
+	// indexed tokens dominated, causing pairCompareMarkets to find zero
+	// pairable candidates even when relevant rows existed on both sides.
+	// Mirrors the per-venue interleave used by topic/trending/liquid.
+	pmMarkets, err := loadCompareMarketsByType(cmd, db, topic, "markets", limit)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer rows.Close()
+	kalshiMarkets, err := loadCompareMarketsByType(cmd, db, topic, "kalshi_markets", limit)
+	if err != nil {
+		return nil, nil, err
+	}
+	return pmMarkets, kalshiMarkets, nil
+}
 
-	pmMarkets := make([]rawMarket, 0)
-	kalshiMarkets := make([]rawMarket, 0)
+// loadCompareMarketsByType runs the FTS5 search restricted to one
+// resource type so each venue contributes up to `limit` candidates
+// before pairCompareMarkets pairs them by Jaccard similarity.
+func loadCompareMarketsByType(cmd *cobra.Command, db *store.Store, topic, resourceType string, limit int) ([]rawMarket, error) {
+	rows, err := db.DB().QueryContext(cmd.Context(), `SELECT r.resource_type, r.id, r.data FROM resources r
+JOIN resources_fts f ON r.id = f.id AND r.resource_type = f.resource_type
+WHERE resources_fts MATCH ?
+AND r.resource_type = ?
+ORDER BY rank LIMIT ?`, topicFTSQuery(topic), resourceType, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	markets := make([]rawMarket, 0)
 	for rows.Next() {
 		var typ, id, data sql.NullString
 		if err := rows.Scan(&typ, &id, &data); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		if !typ.Valid || !data.Valid {
 			continue
@@ -236,13 +256,9 @@ ORDER BY rank LIMIT ?`, topicFTSQuery(topic), limit)
 		if !ok {
 			continue
 		}
-		if market.Venue == "polymarket" {
-			pmMarkets = append(pmMarkets, market)
-		} else {
-			kalshiMarkets = append(kalshiMarkets, market)
-		}
+		markets = append(markets, market)
 	}
-	return pmMarkets, kalshiMarkets, rows.Err()
+	return markets, rows.Err()
 }
 
 func pairCompareMarkets(topic string, pmMarkets, kalshiMarkets []rawMarket, limit int) []comparePair {

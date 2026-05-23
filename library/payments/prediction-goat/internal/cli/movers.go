@@ -57,7 +57,7 @@ func newMoversCmd(flags *rootFlags) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&window, "window", "24h", "Window: 24h or 7d")
+	cmd.Flags().StringVar(&window, "window", "24h", "Window: 24h or 7d (Polymarket only; Kalshi uses its single previous-price snapshot regardless)")
 	cmd.Flags().IntVar(&limit, "limit", 20, "Max results")
 	cmd.Flags().StringVar(&venue, "venue", "all", "Venue: all, polymarket, kalshi")
 	cmd.Flags().StringVar(&dbPath, "db", "", "Database path (default: standard cache location)")
@@ -184,11 +184,22 @@ func moversSQL(venue, window string) string {
 CAST(COALESCE(%s,0) AS REAL) delta, CAST(COALESCE(json_extract(data,'$.lastTradePrice'),0) AS REAL) current_price,
 COALESCE(json_extract(data,'$.endDate'), '') end_date,
 CAST(COALESCE(json_extract(data,'$.volume24hr'), json_extract(data,'$.volumeNum'),0) AS REAL) volume_24h FROM resources WHERE resource_type='markets'`, pmDelta)
+	// Kalshi only carries a single previous-price snapshot in the detail
+	// payload (`previous_price_dollars`), not Polymarket's named 1d/7d/30d
+	// deltas. The price-backfill in source/kalshi populates it for active
+	// high-volume markets; rows without the field (untraded, sub-volume,
+	// or never-backfilled) get filtered out so movers doesn't surface
+	// every Kalshi market as a `+last_price_dollars%` mover. Both 24h and
+	// 7d windows use the same field — Kalshi does not expose a 7d delta,
+	// so the window flag is documented as PM-aware only.
 	ks := `SELECT 'kalshi' source, id, COALESCE(json_extract(data,'$.title'), id) title,
-CAST(COALESCE(json_extract(data,'$.last_price_dollars'),0) - COALESCE(json_extract(data,'$.previous_price_dollars'),0) AS REAL) delta,
+CAST(json_extract(data,'$.last_price_dollars') - json_extract(data,'$.previous_price_dollars') AS REAL) delta,
 CAST(COALESCE(json_extract(data,'$.last_price_dollars'),0) AS REAL) current_price,
 COALESCE(json_extract(data,'$.expiration_time'), json_extract(data,'$.close_time'), '') end_date,
-CAST(COALESCE(json_extract(data,'$.volume_24h_fp'),0) AS REAL) volume_24h FROM resources WHERE resource_type='kalshi_markets'`
+CAST(COALESCE(json_extract(data,'$.volume_24h_fp'),0) AS REAL) volume_24h FROM resources
+WHERE resource_type='kalshi_markets'
+AND json_extract(data,'$.previous_price_dollars') IS NOT NULL
+AND json_extract(data,'$.last_price_dollars') IS NOT NULL`
 	switch venue {
 	case "kalshi":
 		return "SELECT * FROM (" + ks + ") ORDER BY ABS(delta) DESC LIMIT ?"
