@@ -925,6 +925,46 @@
       }
     },
     {
+      "name": "botsee",
+      "category": "marketing",
+      "api": "Botsee",
+      "description": "Have your agents measure and improve your brand's AI Visibility with botsee.io. API-first, agent-native.",
+      "search_terms": [
+        "botsee",
+        "botsee-pp-cli",
+        "Have your agents measure and improve your brand's AI Visibility with botsee.io. Run audits across every major LLM, see what's missing, then get specific recommendations and ready-to-publish content to close the gap. API-first, agent-native",
+        "AI Visibility Audit (flagship)",
+        "ai-visibility-audit",
+        "One command runs the full BotSee audit: idempotent on existing sites, bootstraps customer types and personas and questions if missing, then runs analysis across every LLM and prints a structured visibility report.",
+        "Recommendations (top-level)",
+        "recommendations",
+        "Generate next-step recommendations from an analysis — promoted to top-level so agents can discover it without descending into the analysis subcommand tree.",
+        "Site config tree",
+        "site-config",
+        "Print the full customer-types -> personas -> questions tree for a site, with UUIDs and the actual edit commands users can copy-paste to add, update, or remove any node.",
+        "Cross-site sources rollup",
+        "sites-summary",
+        "Aggregate cited sources across every synced site, grouped by domain, with citation count, distinct sites citing each domain, and first-seen timestamp."
+      ],
+      "path": "library/marketing/botsee",
+      "printer": "grahac",
+      "printer_name": "grahac",
+      "mcp": {
+        "binary": "botsee-pp-mcp",
+        "transports": [
+          "stdio"
+        ],
+        "tool_count": 56,
+        "public_tool_count": 7,
+        "auth_type": "bearer_token",
+        "env_vars": [
+          "BOTSEE_API_KEY"
+        ],
+        "mcp_ready": "full",
+        "spec_format": "openapi3"
+      }
+    },
+    {
       "name": "cal-com",
       "category": "productivity",
       "api": "Cal.com",
