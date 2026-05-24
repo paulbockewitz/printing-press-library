@@ -630,6 +630,47 @@
       }
     },
     {
+      "name": "art-goat",
+      "category": "media-and-entertainment",
+      "api": "Art Goat",
+      "description": "A contemplative daily art practice with museum and astronomy APIs as your gallery.",
+      "search_terms": [
+        "art-goat",
+        "Art Goat",
+        "art-goat-pp-cli",
+        "Contemplative timer sit",
+        "sit",
+        "Sit with one piece of art for a fixed period. Opens the image in your browser, shows the curator's description, runs a quiet timer, and captures your reflection in the journal.",
+        "Opinionated daily pick",
+        "today",
+        "Today's curated piece, chosen using anti-repeat against your sits and journal-aware diversity against your recent medium and culture choices. Includes a one-line 'why this today'.",
+        "Reframed practice metrics",
+        "journal stats",
+        "Practice statistics emphasising source breadth, medium variety, region coverage, and mood drift, with streak available at the bottom labeled 'if you want to know'.",
+        "Reflection full-text search",
+        "journal search",
+        "FTS5 over your reflection history. Surfaces every past sit whose text matches the query."
+      ],
+      "path": "library/media-and-entertainment/art-goat",
+      "printer": "justinwfu",
+      "printer_name": "justinwfu",
+      "mcp": {
+        "binary": "art-goat-pp-mcp",
+        "transports": [
+          "stdio"
+        ],
+        "tool_count": 1,
+        "public_tool_count": 0,
+        "auth_type": "api_key",
+        "env_vars": [
+          "ART_GOAT_API_KEY",
+          "NASA_API_KEY"
+        ],
+        "mcp_ready": "full",
+        "spec_format": "openapi3"
+      }
+    },
+    {
       "name": "arxiv",
       "category": "other",
       "api": "arXiv",
