@@ -256,6 +256,7 @@ Ricette: README.md o SKILL.md`,
 	// Hand-written: portale IPA endpoints (sede + RTD) — not in public-ws API
 	rootCmd.AddCommand(newSedeCmd(flags))
 	rootCmd.AddCommand(newRtdCmd(flags))
+	rootCmd.AddCommand(newServiziCmd(flags))
 
 	return rootCmd
 }
