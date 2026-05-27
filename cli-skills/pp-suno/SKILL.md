@@ -11,6 +11,7 @@ metadata:
       bins:
         - suno-pp-cli
 ---
+
 <!-- GENERATED FILE — DO NOT EDIT.
      This file is a verbatim mirror of library/media-and-entertainment/suno/SKILL.md,
      regenerated post-merge by tools/generate-skills/. Hand-edits here are
