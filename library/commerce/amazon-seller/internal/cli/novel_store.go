@@ -134,6 +134,8 @@ func ensureNovelTables(db *sql.DB) error {
 			monthly_storage_fee REAL,
 			lts_12mo_fee REAL,
 			avg_quantity_charged REAL,
+			report_start TEXT,
+			report_end TEXT,
 			raw_json JSON NOT NULL,
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
@@ -197,6 +199,14 @@ func ensureNovelTables(db *sql.DB) error {
 			return err
 		}
 	}
+	for _, stmt := range []string{
+		`ALTER TABLE storage_fees ADD COLUMN report_start TEXT`,
+		`ALTER TABLE storage_fees ADD COLUMN report_end TEXT`,
+	} {
+		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -221,7 +231,7 @@ func cacheReportData(db *sql.DB, reportType, marketplaceID, startTime, endTime s
 		return err
 	}
 	for _, row := range rows {
-		if err := upsertNovelReportRow(tx, reportType, marketplaceID, row); err != nil {
+		if err := upsertNovelReportRow(tx, reportType, marketplaceID, startTime, endTime, row); err != nil {
 			return err
 		}
 	}
@@ -233,7 +243,7 @@ func reportRangeHash(startTime, endTime string) string {
 	return hex.EncodeToString(sum[:8])
 }
 
-func upsertNovelReportRow(tx *sql.Tx, reportType, marketplaceID string, row map[string]string) error {
+func upsertNovelReportRow(tx *sql.Tx, reportType, marketplaceID, startTime, endTime string, row map[string]string) error {
 	raw, _ := json.Marshal(row)
 	switch reportType {
 	case "GET_FBA_ESTIMATED_FBA_FEES_TXT_DATA":
@@ -318,10 +328,10 @@ func upsertNovelReportRow(tx *sql.Tx, reportType, marketplaceID string, row map[
 		return err
 	case "GET_FBA_STORAGE_FEE_CHARGES_DATA", "GET_FBA_FULFILLMENT_LONGTERM_STORAGE_FEE_CHARGES_DATA":
 		id := firstNonEmpty(rowValue(row, "sku")+"|"+rowValue(row, "asin")+"|"+reportType, hashRow(row))
-		_, err := tx.Exec(`INSERT INTO storage_fees (row_id, asin, sku, condition, monthly_storage_fee, lts_12mo_fee, avg_quantity_charged, raw_json, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-			ON CONFLICT(row_id) DO UPDATE SET monthly_storage_fee=excluded.monthly_storage_fee, lts_12mo_fee=excluded.lts_12mo_fee, avg_quantity_charged=excluded.avg_quantity_charged, raw_json=excluded.raw_json, updated_at=excluded.updated_at`,
-			id, rowValue(row, "asin"), rowValue(row, "sku"), rowValue(row, "condition"), num(row, "monthly_storage_fee", "estimated_monthly_storage_fee"), num(row, "lts_12mo_fee", "long_term_storage_fee", "12_mo_long_term_storage_fee"), num(row, "avg_quantity_charged", "average_quantity_charged"), string(raw))
+		_, err := tx.Exec(`INSERT INTO storage_fees (row_id, asin, sku, condition, monthly_storage_fee, lts_12mo_fee, avg_quantity_charged, report_start, report_end, raw_json, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+			ON CONFLICT(row_id) DO UPDATE SET monthly_storage_fee=excluded.monthly_storage_fee, lts_12mo_fee=excluded.lts_12mo_fee, avg_quantity_charged=excluded.avg_quantity_charged, report_start=excluded.report_start, report_end=excluded.report_end, raw_json=excluded.raw_json, updated_at=excluded.updated_at`,
+			id, rowValue(row, "asin"), rowValue(row, "sku"), rowValue(row, "condition"), num(row, "monthly_storage_fee", "estimated_monthly_storage_fee"), num(row, "lts_12mo_fee", "long_term_storage_fee", "12_mo_long_term_storage_fee"), num(row, "avg_quantity_charged", "average_quantity_charged"), startTime, endTime, string(raw))
 		return err
 	case "GET_FBA_REIMBURSEMENTS_DATA":
 		id := firstNonEmpty(rowValue(row, "reimbursement_id"), hashRow(row))

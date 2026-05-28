@@ -181,7 +181,7 @@ func computeSKUPnl(db *sql.DB, sku, asin string, minUnits int, sortBy string, si
 			FROM order_details WHERE purchase_date >= ? GROUP BY sku
 		), storage_rollup AS (
 			SELECT sku, SUM(monthly_storage_fee + lts_12mo_fee) AS storage_fee
-			FROM storage_fees GROUP BY sku
+			FROM storage_fees WHERE COALESCE(report_end, '') >= ? GROUP BY sku
 		)
 		SELECT o.sku, o.asin, o.units, o.revenue,
 			COALESCE(f.product_name, ''), COALESCE(f.referral_fee, 0),
@@ -189,7 +189,7 @@ func computeSKUPnl(db *sql.DB, sku, asin string, minUnits int, sortBy string, si
 			COALESCE(s.storage_fee, 0)
 		FROM order_rollup o
 		LEFT JOIN fee_estimates f ON f.sku = o.sku
-		LEFT JOIN storage_rollup s ON s.sku = o.sku`, sinceDate)
+		LEFT JOIN storage_rollup s ON s.sku = o.sku`, sinceDate, sinceDate)
 	if err != nil {
 		return nil, err
 	}
@@ -227,10 +227,21 @@ func computeSKUPnl(db *sql.DB, sku, asin string, minUnits int, sortBy string, si
 }
 
 func computeSettlementReconciliation(db *sql.DB, minDiscrepancy float64, sinceDate string) ([]map[string]any, error) {
-	rows, err := db.Query(`SELECT o.order_id, o.sku, SUM(o.item_price + o.shipping_price), COALESCE(SUM(s.amount), 0)
-		FROM order_details o LEFT JOIN settlements s ON s.order_id = o.order_id AND (s.sku = o.sku OR s.sku = '')
+	rows, err := db.Query(`WITH sku_amounts AS (
+			SELECT order_id, sku, SUM(amount) AS amount FROM settlements WHERE sku != '' GROUP BY order_id, sku
+		), order_amounts AS (
+			SELECT order_id, SUM(amount) AS amount FROM settlements WHERE sku = '' GROUP BY order_id
+		), sku_count AS (
+			SELECT order_id, COUNT(DISTINCT sku) AS n FROM order_details WHERE purchase_date >= ? GROUP BY order_id
+		)
+		SELECT o.order_id, o.sku, SUM(o.item_price + o.shipping_price),
+			COALESCE(sa.amount, 0) + COALESCE(oa.amount, 0) / NULLIF(sc.n, 0)
+		FROM order_details o
+		LEFT JOIN sku_amounts sa ON sa.order_id = o.order_id AND sa.sku = o.sku
+		LEFT JOIN order_amounts oa ON oa.order_id = o.order_id
+		LEFT JOIN sku_count sc ON sc.order_id = o.order_id
 		WHERE o.purchase_date >= ?
-		GROUP BY o.order_id, o.sku`, sinceDate)
+		GROUP BY o.order_id, o.sku`, sinceDate, sinceDate)
 	if err != nil {
 		return nil, err
 	}

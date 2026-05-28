@@ -143,6 +143,26 @@ func TestSettlementReconciliationUsesSinceDate(t *testing.T) {
 	}
 }
 
+func TestSettlementReconciliationSplitsBlankSKUSettlementRows(t *testing.T) {
+	db := openNovelTestDB(t)
+	execSQL(t, db, `INSERT INTO order_details (order_id, sku, asin, purchase_date, quantity, item_price, item_tax, shipping_price, raw_json) VALUES ('o1','SKU1','A1','2026-02-01',1,100,0,0,'{}')`)
+	execSQL(t, db, `INSERT INTO order_details (order_id, sku, asin, purchase_date, quantity, item_price, item_tax, shipping_price, raw_json) VALUES ('o1','SKU2','A2','2026-02-01',1,50,0,0,'{}')`)
+	execSQL(t, db, `INSERT INTO settlements (settlement_id, order_id, sku, transaction_type, amount_type, amount_description, amount, posted_date, raw_json) VALUES ('s1','o1','SKU1','Order','ItemPrice','Principal',95,'2026-02-02','{}')`)
+	execSQL(t, db, `INSERT INTO settlements (settlement_id, order_id, sku, transaction_type, amount_type, amount_description, amount, posted_date, raw_json) VALUES ('s2','o1','SKU2','Order','ItemPrice','Principal',45,'2026-02-02','{}')`)
+	execSQL(t, db, `INSERT INTO settlements (settlement_id, order_id, sku, transaction_type, amount_type, amount_description, amount, posted_date, raw_json) VALUES ('s3','o1','','Order','Fee','Commission',-10,'2026-02-02','{}')`)
+	out, err := computeSettlementReconciliation(db, 0, "2026-01-15")
+	if err != nil {
+		t.Fatal(err)
+	}
+	actualBySKU := map[string]float64{}
+	for _, row := range out {
+		actualBySKU[row["sku"].(string)] = row["actual_settlement"].(float64)
+	}
+	if actualBySKU["SKU1"] != 90 || actualBySKU["SKU2"] != 40 {
+		t.Fatalf("blank-SKU settlement row was not split across SKUs: %#v", out)
+	}
+}
+
 func TestSKUPnlCoalescesFBAFeeComponents(t *testing.T) {
 	db := openNovelTestDB(t)
 	execSQL(t, db, `INSERT INTO order_details (order_id, sku, asin, purchase_date, quantity, item_price, item_tax, shipping_price, raw_json) VALUES ('o1','SKU1','A1','2026-02-01',2,10,0,0,'{}')`)
@@ -156,6 +176,21 @@ func TestSKUPnlCoalescesFBAFeeComponents(t *testing.T) {
 	}
 }
 
+func TestSKUPnlFiltersStorageFeesByReportWindow(t *testing.T) {
+	db := openNovelTestDB(t)
+	execSQL(t, db, `INSERT INTO order_details (order_id, sku, asin, purchase_date, quantity, item_price, item_tax, shipping_price, raw_json) VALUES ('o1','SKU1','A1','2026-02-01',1,100,0,0,'{}')`)
+	execSQL(t, db, `INSERT INTO fee_estimates (sku, asin, product_name, your_price, referral_fee, fba_fulfillment_fee, raw_json) VALUES ('SKU1','A1','Widget',100,0,0,'{}')`)
+	execSQL(t, db, `INSERT INTO storage_fees (row_id, sku, asin, monthly_storage_fee, lts_12mo_fee, report_start, report_end, raw_json) VALUES ('old','SKU1','A1',90,0,'2026-01-01','2026-01-10','{}')`)
+	execSQL(t, db, `INSERT INTO storage_fees (row_id, sku, asin, monthly_storage_fee, lts_12mo_fee, report_start, report_end, raw_json) VALUES ('new','SKU1','A1',10,0,'2026-01-20','2026-02-01','{}')`)
+	out, err := computeSKUPnl(db, "", "", 0, "profit", "2026-01-15")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 1 || out[0]["storage_fee_total"].(float64) != 10 || out[0]["estimated_profit"].(float64) != 90 {
+		t.Fatalf("unexpected SKU P&L storage fees: %#v", out)
+	}
+}
+
 func TestFBAvsFBMCoalescesFBAFeeComponents(t *testing.T) {
 	db := openNovelTestDB(t)
 	execSQL(t, db, `INSERT INTO fee_estimates (sku, asin, your_price, referral_fee, fba_fulfillment_fee, fba_weight_handling, raw_json) VALUES ('SKU1','A1',20,2,3,1,'{}')`)
@@ -165,6 +200,20 @@ func TestFBAvsFBMCoalescesFBAFeeComponents(t *testing.T) {
 	}
 	if len(out) != 1 || out[0]["fba_profit_per_unit"].(float64) != 14 {
 		t.Fatalf("unexpected FBA/FBM rows: %#v", out)
+	}
+}
+
+func TestListingCompletenessDoesNotTreatEnhancedImageAsAPlus(t *testing.T) {
+	raw := `{
+		"asin":"A1",
+		"title":"A complete product title with enough words",
+		"images":["1.jpg","2.jpg","3.jpg"],
+		"bullet_points":["one","two","three"],
+		"enhanced_image_view_url":"https://example.com/image.jpg"
+	}`
+	score, _, _, _, _, hasAPlus, missing := scoreListingCompleteness(raw)
+	if hasAPlus || score != 90 || !contains(missing, "a_plus_content") {
+		t.Fatalf("enhanced image field should not count as A+ content: score=%d hasAPlus=%v missing=%v", score, hasAPlus, missing)
 	}
 }
 

@@ -112,7 +112,7 @@ func scoreListingCompleteness(raw string) (int, string, string, int, int, bool, 
 	title := stringField(obj, "title", "itemName", "item_name")
 	images := countListingAttributeEntries(obj, "image", "images", "image_url", "imageUrl")
 	bullets := countListingAttributeEntries(obj, "bullet", "bullets", "bullet_point", "bulletPoint", "bullet_points", "bulletPoints")
-	hasAPlus := strings.Contains(text, "a_plus") || strings.Contains(text, "aplus") || strings.Contains(text, "enhanced")
+	hasAPlus := strings.Contains(text, "a_plus") || strings.Contains(text, "aplus")
 	score := 100
 	var missing []string
 	if title == "" || len(title) < 30 {
