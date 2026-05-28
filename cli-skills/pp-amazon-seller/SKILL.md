@@ -70,6 +70,27 @@ If `--version` reports "command not found" after install, the install step did n
 - `amazon-seller-pp-cli reports get` — Get one report by report ID. This is the manual polling endpoint for report processing status.
 - `amazon-seller-pp-cli reports list` — List reports. If nextToken is set, Amazon requires it to be the only query parameter; pass no other filters with...
 
+**inbound-plans** — Create and manage Fulfillment Inbound v2024-03-20 inbound plans.
+
+- `amazon-seller-pp-cli inbound-plans create --marketplace-id ATVPDKIKX0DER --source-address address.json --items items.csv --name "June FBA"` — Preview a createInboundPlan body from CSV/JSON input. **Write command:** pass `--yes` to send, `--dry-run` to render the HTTP request, and `--wait` to poll the returned operation.
+- `amazon-seller-pp-cli inbound-plans create --stdin` — Read Amazon's exact createInboundPlan JSON request body from stdin. **Write command:** pass `--yes` to send.
+- `amazon-seller-pp-cli inbound-plans status --operation-id <operationId> --wait` — Poll getInboundOperationStatus for asynchronous Fulfillment Inbound POST/PUT operations.
+- `amazon-seller-pp-cli inbound-plans get <inboundPlanId>` — Get one inbound plan.
+- `amazon-seller-pp-cli inbound-plans list --status ACTIVE --page-size 10` — List inbound plans.
+- `amazon-seller-pp-cli inbound-plans cancel <inboundPlanId> --yes` — Cancel an inbound plan. **Write command:** requires `--yes` unless `--dry-run` is set.
+- `amazon-seller-pp-cli inbound-plans packing generate --inbound-plan-id <id>` — Generate packing options. **Write command:** use `--dry-run` for request preview.
+- `amazon-seller-pp-cli inbound-plans packing list --inbound-plan-id <id>` — List packing options.
+- `amazon-seller-pp-cli inbound-plans packing confirm --inbound-plan-id <id> --option-id <packingOptionId> --yes` — Confirm a packing option. **Write command:** requires `--yes` unless `--dry-run` is set.
+- `amazon-seller-pp-cli inbound-plans packing set --inbound-plan-id <id> --body cartons.json --yes` — Set carton-level packing information. **Write command:** requires `--yes` unless `--dry-run` is set.
+- `amazon-seller-pp-cli inbound-plans placement generate --inbound-plan-id <id> --body placement.json` — Generate placement options, optionally with customPlacement JSON. **Write command:** pass `--yes` when providing a body to send instead of previewing.
+- `amazon-seller-pp-cli inbound-plans placement list --inbound-plan-id <id>` — List placement options.
+- `amazon-seller-pp-cli inbound-plans placement confirm --inbound-plan-id <id> --option-id <placementOptionId> --yes` — Confirm a placement option. **Write command:** requires `--yes` unless `--dry-run` is set.
+- `amazon-seller-pp-cli inbound-plans transportation generate --inbound-plan-id <id> --body transportation.json` — Generate transportation options from placement/shipment JSON. **Write command:** pass `--yes` when providing a body to send instead of previewing.
+- `amazon-seller-pp-cli inbound-plans transportation list --inbound-plan-id <id> --placement-option-id <placementOptionId>` — List transportation options.
+- `amazon-seller-pp-cli inbound-plans transportation confirm --inbound-plan-id <id> --body selections.json --yes` — Confirm transportation selections. **Write command:** requires `--yes` unless `--dry-run` is set.
+
+For CSV item input, use columns `msku,quantity,prepOwner,labelOwner,expiration,manufacturingLotCode`. For the US marketplace `ATVPDKIKX0DER`, the CLI warns when `prepOwner=AMAZON` or `labelOwner=AMAZON`, because Amazon says US FBA prep and item label services are no longer available starting January 1, 2026.
+
 **profitability** — Compute estimated SKU profitability from Amazon reports.
 
 - `amazon-seller-pp-cli profitability sku-pnl --marketplace-id ATVPDKIKX0DER --days 30` — Estimate per-SKU revenue, fees, storage cost, margin, and profit.
