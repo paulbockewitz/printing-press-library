@@ -13,6 +13,7 @@ require modernc.org/sqlite v1.37.0
 require (
 	github.com/enetx/http v1.0.28
 	github.com/go-rod/rod v0.116.2
+	github.com/go-rod/stealth v0.4.9
 	github.com/mark3labs/mcp-go v0.47.0
 	github.com/spf13/pflag v1.0.6
 )

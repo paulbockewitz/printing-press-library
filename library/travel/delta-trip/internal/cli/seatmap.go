@@ -16,13 +16,15 @@ import (
 // newSeatMapCmd is the top-level `seatmap` command.
 func newSeatMapCmd(flags *rootFlags) *cobra.Command {
 	var flagFlight int
+	var flagHeaded bool
 	cmd := &cobra.Command{
 		Use:   "seatmap <confirmation> <first-name> <last-name>",
 		Short: "Show full seat availability map for a flight",
 		Long: `Show every seat on a flight with availability status.
 
-Opens a Chrome window to load the delta.com "View Seats" page for the specified
-flight, then displays each seat as available, occupied, blocked, or your-seat.
+Fetches seat availability from delta.com for the specified flight using headless
+Chrome by default (no visible window). Pass --headed to use a visible window
+if headless mode is blocked.
 Subsequent calls within the 4-hour trip cache are faster (flight metadata
 is reused; only the seat map page is re-fetched).`,
 		Example: strings.TrimRight(`
@@ -32,14 +34,15 @@ is reused; only the seat map page is re-fetched).`,
   delta-trip-pp-cli seatmap ABC123 JANE SMITH --json --select cabins,availableSeats`, "\n"),
 		Args:        cobra.ExactArgs(3),
 		Annotations: map[string]string{"mcp:read-only": "true"},
-		RunE:        seatMapRunE(flags, &flagFlight),
+		RunE:        seatMapRunE(flags, &flagFlight, &flagHeaded),
 	}
 	cmd.Flags().IntVar(&flagFlight, "flight", 1, "Flight within the itinerary to map (1-based, default 1)")
+	cmd.Flags().BoolVar(&flagHeaded, "headed", false, "Use a visible Chrome window (default: headless; use if bot detection blocks headless)")
 	return cmd
 }
 
 // newTripSeatMapCmd is the same feature wired as `trip seatmap`.
-func newTripSeatMapCmd(flags *rootFlags) *cobra.Command {
+func newTripSeatMapCmd(flags *rootFlags, flagHeaded *bool) *cobra.Command {
 	var flagFlight int
 	cmd := &cobra.Command{
 		Use:   "seatmap <confirmation> <first-name> <last-name>",
@@ -49,13 +52,13 @@ func newTripSeatMapCmd(flags *rootFlags) *cobra.Command {
   delta-trip-pp-cli trip seatmap ABC123 JANE SMITH --flight 2`, "\n"),
 		Args:        cobra.ExactArgs(3),
 		Annotations: map[string]string{"mcp:read-only": "true"},
-		RunE:        seatMapRunE(flags, &flagFlight),
+		RunE:        seatMapRunE(flags, &flagFlight, flagHeaded),
 	}
 	cmd.Flags().IntVar(&flagFlight, "flight", 1, "Flight within the itinerary to map (1-based, default 1)")
 	return cmd
 }
 
-func seatMapRunE(flags *rootFlags, flagFlight *int) func(*cobra.Command, []string) error {
+func seatMapRunE(flags *rootFlags, flagFlight *int, flagHeaded *bool) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		if dryRunOK(flags) {
 			return nil
@@ -65,7 +68,11 @@ func seatMapRunE(flags *rootFlags, flagFlight *int) func(*cobra.Command, []strin
 		first := strings.ToUpper(args[1])
 		last := strings.ToUpper(args[2])
 
-		fmt.Fprintf(os.Stderr, "Fetching seat map for %s flight %d (opens a browser window)...\n", conf, *flagFlight)
+		if *flagHeaded {
+			fmt.Fprintf(os.Stderr, "Fetching seat map for %s flight %d (opening browser window)...\n", conf, *flagFlight)
+		} else {
+			fmt.Fprintf(os.Stderr, "Fetching seat map for %s flight %d...\n", conf, *flagFlight)
+		}
 
 		timeout := flags.timeout
 		if timeout < 150*time.Second {
@@ -74,7 +81,7 @@ func seatMapRunE(flags *rootFlags, flagFlight *int) func(*cobra.Command, []strin
 		scrapeCtx, cancel := context.WithTimeout(cmd.Context(), timeout)
 		defer cancel()
 
-		seatMap, err := delta.GetSeatMap(scrapeCtx, conf, first, last, *flagFlight)
+		seatMap, err := delta.GetSeatMap(scrapeCtx, conf, first, last, *flagFlight, *flagHeaded)
 		if err != nil {
 			return fmt.Errorf("fetching seat map: %w", err)
 		}

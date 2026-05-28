@@ -17,7 +17,7 @@ import (
 // for the target flight, and returns the full seat availability map from the DOM.
 //
 // flightIndex is 1-based (1 = first flight in the itinerary). Pass 0 to default to 1.
-func GetSeatMap(ctx context.Context, confirmationNo, firstName, lastName string, flightIndex int) (*SeatMapResult, error) {
+func GetSeatMap(ctx context.Context, confirmationNo, firstName, lastName string, flightIndex int, headed bool) (*SeatMapResult, error) {
 	conf := strings.ToUpper(confirmationNo)
 	first := strings.ToUpper(firstName)
 	last := strings.ToUpper(lastName)
@@ -25,7 +25,11 @@ func GetSeatMap(ctx context.Context, confirmationNo, firstName, lastName string,
 		flightIndex = 1
 	}
 
-	browser, cleanup, err := launchBrowser()
+	launchFn := launchHeadlessBrowser
+	if headed {
+		launchFn = launchHeadedBrowser
+	}
+	browser, cleanup, err := launchFn()
 	if err != nil {
 		return nil, fmt.Errorf("launching browser: %w", err)
 	}
@@ -34,12 +38,9 @@ func GetSeatMap(ctx context.Context, confirmationNo, firstName, lastName string,
 	// Do NOT bind the browser to ctx via browser.Context(ctx): that attaches CDP
 	// event subscriptions to the context and causes premature teardown when the
 	// deadline approaches.  We respect ctx manually via pollCondition selects.
-	page, err := browser.Page(proto.TargetCreateTarget{URL: ""})
+	page, err := newStealthPage(browser)
 	if err != nil {
-		return nil, fmt.Errorf("opening browser tab: %w", err)
-	}
-	if err := applyStealthScripts(page); err != nil {
-		return nil, fmt.Errorf("stealth setup: %w", err)
+		return nil, fmt.Errorf("stealth page setup: %w", err)
 	}
 
 	// ── Phase 1: Navigate to My Trips and fill the search form ──────────────

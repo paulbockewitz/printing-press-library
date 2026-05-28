@@ -1,16 +1,19 @@
 // Package delta provides browser-based scraping for delta.com My Trips.
 //
-// Transport strategy:
-//   - Load the legacy findPnr.action interstitial URL in a headed Chrome window.
-//   - The page's built-in jQuery auto-submits the pre-filled form to the server.
-//   - The server redirects to the trip-details React SPA.
-//   - The SPA calls mytrips-api.delta.com/v1/mytrips/travelreservations.
-//   - We intercept that XHR and parse its JSON; fall back to DOM scraping if needed.
+// Transport strategy (three tiers, attempted in order on cold lookups):
+//   - Tier 1: Direct HTTP to mytrips-api.delta.com with Chrome TLS impersonation.
+//             Sub-second when Akamai allows it; result cached via probe cache (24h).
+//   - Tier 2: Headless Chrome (--headless=new) with go-rod/stealth patches.
+//             No visible window; works in CI/Docker. Used when Tier 1 is blocked.
+//   - Tier 3: Headed Chrome (visible window). Only when --headed flag is passed.
+//   The SPA calls mytrips-api.delta.com/v1/mytrips/travelreservations; we intercept
+//   that XHR and parse its JSON, with a DOM-scrape fallback if the XHR times out.
 package delta
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -20,19 +23,45 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
+	"github.com/go-rod/stealth"
 )
 
 const reservAPIFrag = "travelreservations"
 
-// GetTrip navigates delta.com My Trips, fills the search form via JavaScript
-// (Shadow DOM traversal), intercepts the travelreservations API response,
-// and returns structured trip data.
-func GetTrip(ctx context.Context, confirmationNo, firstName, lastName string) (*TripResult, error) {
+// GetTrip fetches trip data from delta.com using a three-tier strategy:
+//   - Tier 1 (headed=false): direct HTTP via TryHTTPTrip — instant if Akamai allows it
+//   - Tier 2 (headed=false): headless Chrome with go-rod/stealth patches, no visible window
+//   - Tier 3 (headed=true):  headed Chrome (visible window), only when --headed is passed
+func GetTrip(ctx context.Context, confirmationNo, firstName, lastName string, headed bool) (*TripResult, error) {
 	conf := strings.ToUpper(confirmationNo)
 	first := strings.ToUpper(firstName)
 	last := strings.ToUpper(lastName)
 
-	browser, cleanup, err := launchBrowser()
+	// Tier 1: direct HTTP (skipped if --headed or probe cache says "blocked").
+	if !headed {
+		probeStatus := LoadProbeStatus()
+		if probeStatus != "blocked" {
+			trip, httpErr := TryHTTPTrip(ctx, conf, first, last)
+			if httpErr == nil {
+				SaveProbeStatus("ok")
+				return trip, nil
+			}
+			if errors.Is(httpErr, ErrAkamaiBlocked) {
+				SaveProbeStatus("blocked")
+				// Fall through to browser.
+			}
+			// Non-Akamai errors (network timeout, parse failure): don't cache result,
+			// fall through to browser so the user still gets data.
+		}
+	}
+
+	// Tier 2 / Tier 3: browser.
+	launchFn := launchHeadlessBrowser
+	if headed {
+		launchFn = launchHeadedBrowser
+	}
+
+	browser, cleanup, err := launchFn()
 	if err != nil {
 		return nil, fmt.Errorf("launching browser: %w", err)
 	}
@@ -41,14 +70,10 @@ func GetTrip(ctx context.Context, confirmationNo, firstName, lastName string) (*
 	// Do NOT bind the browser to ctx via browser.Context(ctx): that attaches CDP
 	// event subscriptions to the context and causes premature teardown when the
 	// deadline approaches, breaking the DOM-scrape fallback path.
-	page, err := browser.Page(proto.TargetCreateTarget{URL: ""})
+	// newStealthPage opens a new tab with go-rod/stealth patches pre-applied.
+	page, err := newStealthPage(browser)
 	if err != nil {
-		return nil, fmt.Errorf("opening browser tab: %w", err)
-	}
-
-	// Stealth: suppress webdriver detection signals.
-	if err := applyStealthScripts(page); err != nil {
-		return nil, fmt.Errorf("stealth setup: %w", err)
+		return nil, fmt.Errorf("stealth page setup: %w", err)
 	}
 
 	// Intercept the travelreservations XHR before navigating.
@@ -177,9 +202,39 @@ func navigateAndSubmitSearch(page *rod.Page, conf, first, last string) {
 	}`, conf, first, last)
 }
 
-// launchBrowser starts Chrome in headed mode (delta.com WAF blocks headless).
-// The browser window closes automatically when the CLI finishes.
-func launchBrowser() (*rod.Browser, func(), error) {
+// launchHeadlessBrowser starts Chrome in --headless=new mode.
+// --headless=new (Chrome 112+) uses the same renderer as headed Chrome,
+// making it significantly harder for WAFs to detect than --headless (old).
+// Works in Docker, CI, and SSH sessions — no display server required.
+func launchHeadlessBrowser() (*rod.Browser, func(), error) {
+	l := launcher.New().
+		HeadlessNew(true).
+		Leakless(false).
+		Set("disable-blink-features", "AutomationControlled").
+		Set("disable-infobars", "").
+		Set("window-size", "1920,1080").
+		Delete("enable-automation")
+
+	if path, ok := launcher.LookPath(); ok {
+		l = l.Bin(path)
+	}
+
+	u, err := l.Launch()
+	if err != nil {
+		return nil, nil, fmt.Errorf("headless browser launch: %w", err)
+	}
+
+	browser := rod.New().ControlURL(u).MustConnect()
+	cleanup := func() {
+		browser.MustClose()
+		l.Cleanup()
+	}
+	return browser, cleanup, nil
+}
+
+// launchHeadedBrowser starts Chrome in headed (visible window) mode.
+// Used only when --headed flag is passed.
+func launchHeadedBrowser() (*rod.Browser, func(), error) {
 	l := launcher.New().
 		Headless(false).
 		Leakless(false). // avoid leakless helper binary (AV false-positive on Windows)
@@ -195,7 +250,7 @@ func launchBrowser() (*rod.Browser, func(), error) {
 
 	u, err := l.Launch()
 	if err != nil {
-		return nil, nil, fmt.Errorf("launch: %w", err)
+		return nil, nil, fmt.Errorf("headed browser launch: %w", err)
 	}
 
 	browser := rod.New().ControlURL(u).MustConnect()
@@ -206,14 +261,22 @@ func launchBrowser() (*rod.Browser, func(), error) {
 	return browser, cleanup, nil
 }
 
-func applyStealthScripts(page *rod.Page) error {
-	_, err := page.EvalOnNewDocument(`() => {
-		Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-		Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3] });
-		Object.defineProperty(navigator, 'languages', { get: () => ['en-US','en'] });
-		window.chrome = { runtime: {} };
+// newStealthPage creates a new tab with go-rod/stealth patches applied.
+// stealth.Page patches ~20 anti-detection signals including WebGL vendor strings,
+// plugin arrays, iframe contentWindow access, and more.
+func newStealthPage(browser *rod.Browser) (*rod.Page, error) {
+	page, err := stealth.Page(browser)
+	if err != nil {
+		return nil, fmt.Errorf("stealth page: %w", err)
+	}
+	// Belt-and-suspenders: ensure chrome.runtime exists in addition to stealth's patches.
+	_, err = page.EvalOnNewDocument(`() => {
+		window.chrome = window.chrome || { runtime: {} };
 	}`)
-	return err
+	if err != nil {
+		return nil, fmt.Errorf("chrome.runtime patch: %w", err)
+	}
+	return page, nil
 }
 
 // parseTravelReservations parses the JSON body from mytrips-api.delta.com.

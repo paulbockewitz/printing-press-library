@@ -1,0 +1,16 @@
+# Compiled binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Build output
+dist/
+
+# Go test cache
+*.test
+*.out
+
+# Probe cache (runtime data, not source)
+probe.json

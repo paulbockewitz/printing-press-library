@@ -12,6 +12,7 @@ import (
 
 func newTripsPromotedCmd(flags *rootFlags) *cobra.Command {
 	var flagNoCache bool
+	var flagHeaded bool
 
 	cmd := &cobra.Command{
 		Use:         "trips <confirmation> <first-name> <last-name>",
@@ -22,7 +23,7 @@ func newTripsPromotedCmd(flags *rootFlags) *cobra.Command {
 		Args:        cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			conf, first, last := strings.ToUpper(args[0]), strings.ToUpper(args[1]), strings.ToUpper(args[2])
-			trip, err := fetchAndCacheTrip(cmd.Context(), conf, first, last, flags, flagNoCache)
+			trip, err := fetchAndCacheTrip(cmd.Context(), conf, first, last, flags, flagNoCache, flagHeaded)
 			if err != nil {
 				return err
 			}
@@ -36,10 +37,11 @@ func newTripsPromotedCmd(flags *rootFlags) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&flagNoCache, "no-cache", false, "Bypass local cache and fetch live from delta.com")
+	cmd.PersistentFlags().BoolVar(&flagHeaded, "headed", false, "Use a visible Chrome window (default: headless; use if bot detection blocks headless)")
 
 	// Wire sibling endpoints and sub-resources as subcommands
-	cmd.AddCommand(newTripFlightsCmd(flags))
-	cmd.AddCommand(newCheckinStatusCmd(flags))
+	cmd.AddCommand(newTripFlightsCmd(flags, &flagHeaded))
+	cmd.AddCommand(newCheckinStatusCmd(flags, &flagHeaded))
 
 	return cmd
 }
@@ -54,7 +56,7 @@ func newTripsGetCmd(flags *rootFlags) *cobra.Command {
 		Args:    cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			conf, first, last := strings.ToUpper(args[0]), strings.ToUpper(args[1]), strings.ToUpper(args[2])
-			trip, err := fetchAndCacheTrip(cmd.Context(), conf, first, last, flags, flagNoCache)
+			trip, err := fetchAndCacheTrip(cmd.Context(), conf, first, last, flags, flagNoCache, false)
 			if err != nil {
 				return err
 			}

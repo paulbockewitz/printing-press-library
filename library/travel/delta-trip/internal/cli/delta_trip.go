@@ -25,21 +25,23 @@ const (
 
 // newTripCmd creates the `trip` parent command with `show` and `flights` subcommands.
 func newTripCmd(flags *rootFlags) *cobra.Command {
+	var flagHeaded bool
 	cmd := &cobra.Command{
 		Use:   "trip",
 		Short: "Manage Delta trips by confirmation number",
 		Long:  "Look up and display Delta Air Lines trip details using a confirmation number (no login required).",
 	}
-	cmd.AddCommand(newTripShowCmd(flags))
-	cmd.AddCommand(newTripFlightsCmd(flags))
-	cmd.AddCommand(newCheckinStatusCmd(flags))
-	cmd.AddCommand(newTripSeatMapCmd(flags))
-	cmd.AddCommand(newLayoverRiskCmd(flags))
+	cmd.PersistentFlags().BoolVar(&flagHeaded, "headed", false, "Use a visible Chrome window (default: headless; use if bot detection blocks headless)")
+	cmd.AddCommand(newTripShowCmd(flags, &flagHeaded))
+	cmd.AddCommand(newTripFlightsCmd(flags, &flagHeaded))
+	cmd.AddCommand(newCheckinStatusCmd(flags, &flagHeaded))
+	cmd.AddCommand(newTripSeatMapCmd(flags, &flagHeaded))
+	cmd.AddCommand(newLayoverRiskCmd(flags, &flagHeaded))
 	return cmd
 }
 
 // newTripShowCmd implements `delta-trip trip show CONF FIRST LAST`.
-func newTripShowCmd(flags *rootFlags) *cobra.Command {
+func newTripShowCmd(flags *rootFlags, flagHeaded *bool) *cobra.Command {
 	var flagNoCache bool
 	cmd := &cobra.Command{
 		Use:     "show <confirmation> <first-name> <last-name>",
@@ -48,7 +50,7 @@ func newTripShowCmd(flags *rootFlags) *cobra.Command {
 		Args:    cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			conf, first, last := strings.ToUpper(args[0]), strings.ToUpper(args[1]), strings.ToUpper(args[2])
-			trip, err := fetchAndCacheTrip(cmd.Context(), conf, first, last, flags, flagNoCache)
+			trip, err := fetchAndCacheTrip(cmd.Context(), conf, first, last, flags, flagNoCache, *flagHeaded)
 			if err != nil {
 				return err
 			}
@@ -65,7 +67,7 @@ func newTripShowCmd(flags *rootFlags) *cobra.Command {
 }
 
 // newTripFlightsCmd implements `delta-trip trip flights CONF FIRST LAST`.
-func newTripFlightsCmd(flags *rootFlags) *cobra.Command {
+func newTripFlightsCmd(flags *rootFlags, flagHeaded *bool) *cobra.Command {
 	var flagNoCache bool
 	var flagFlight int
 	cmd := &cobra.Command{
@@ -75,7 +77,7 @@ func newTripFlightsCmd(flags *rootFlags) *cobra.Command {
 		Args:    cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			conf, first, last := strings.ToUpper(args[0]), strings.ToUpper(args[1]), strings.ToUpper(args[2])
-			trip, err := fetchAndCacheTrip(cmd.Context(), conf, first, last, flags, flagNoCache)
+			trip, err := fetchAndCacheTrip(cmd.Context(), conf, first, last, flags, flagNoCache, *flagHeaded)
 			if err != nil {
 				return err
 			}
@@ -97,7 +99,7 @@ func newTripFlightsCmd(flags *rootFlags) *cobra.Command {
 }
 
 // newCheckinStatusCmd implements `delta-trip trip checkin CONF FIRST LAST`.
-func newCheckinStatusCmd(flags *rootFlags) *cobra.Command {
+func newCheckinStatusCmd(flags *rootFlags, flagHeaded *bool) *cobra.Command {
 	var flagNoCache bool
 	cmd := &cobra.Command{
 		Use:     "checkin <confirmation> <first-name> <last-name>",
@@ -106,7 +108,7 @@ func newCheckinStatusCmd(flags *rootFlags) *cobra.Command {
 		Args:    cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			conf, first, last := strings.ToUpper(args[0]), strings.ToUpper(args[1]), strings.ToUpper(args[2])
-			trip, err := fetchAndCacheTrip(cmd.Context(), conf, first, last, flags, flagNoCache)
+			trip, err := fetchAndCacheTrip(cmd.Context(), conf, first, last, flags, flagNoCache, *flagHeaded)
 			if err != nil {
 				return err
 			}
@@ -119,7 +121,7 @@ func newCheckinStatusCmd(flags *rootFlags) *cobra.Command {
 
 // fetchAndCacheTrip looks up a trip using the local SQLite cache with TTL,
 // falling back to the browser scraper when stale or not cached.
-func fetchAndCacheTrip(ctx context.Context, conf, first, last string, flags *rootFlags, noCache bool) (*delta.TripResult, error) {
+func fetchAndCacheTrip(ctx context.Context, conf, first, last string, flags *rootFlags, noCache bool, headed bool) (*delta.TripResult, error) {
 	cacheKey := strings.ToUpper(conf)
 	dbPath := defaultDBPath(cliName)
 
@@ -136,8 +138,12 @@ func fetchAndCacheTrip(ctx context.Context, conf, first, last string, flags *roo
 		return nil, fmt.Errorf("no cached trip found for %s. Remove --data-source=local or run without it to fetch live.", conf)
 	}
 
-	// Browser scrape.
-	fmt.Fprintf(os.Stderr, "Fetching trip %s from delta.com (this opens a browser window)...\n", conf)
+	// Browser scrape (headless by default, headed if --headed).
+	if headed {
+		fmt.Fprintf(os.Stderr, "Fetching trip %s from delta.com (opening browser window)...\n", conf)
+	} else {
+		fmt.Fprintf(os.Stderr, "Fetching trip %s from delta.com...\n", conf)
+	}
 	timeout := flags.timeout
 	if timeout < 60*time.Second {
 		timeout = 60 * time.Second
@@ -145,7 +151,7 @@ func fetchAndCacheTrip(ctx context.Context, conf, first, last string, flags *roo
 	scrapeCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	trip, err := delta.GetTrip(scrapeCtx, conf, first, last)
+	trip, err := delta.GetTrip(scrapeCtx, conf, first, last, headed)
 	if err != nil {
 		return nil, fmt.Errorf("fetching trip from delta.com: %w", err)
 	}
@@ -373,7 +379,7 @@ func orTBD(s string) string {
 // layover scored as OK / TIGHT / HIGH with an agent-ready recommended action.
 // Unlike `trip flights` (which buries layover info in full flight detail rows),
 // this command returns only the connection data, structured for agent decision-making.
-func newLayoverRiskCmd(flags *rootFlags) *cobra.Command {
+func newLayoverRiskCmd(flags *rootFlags, flagHeaded *bool) *cobra.Command {
 	var flagNoCache bool
 	cmd := &cobra.Command{
 		Use:   "layover [confirmation] [first-name] [last-name]",
@@ -398,7 +404,7 @@ func newLayoverRiskCmd(flags *rootFlags) *cobra.Command {
 				return fmt.Errorf("usage: trip layover <confirmation> <first-name> <last-name>")
 			}
 			conf, first, last := strings.ToUpper(args[0]), strings.ToUpper(args[1]), strings.ToUpper(args[2])
-			trip, err := fetchAndCacheTrip(cmd.Context(), conf, first, last, flags, flagNoCache)
+			trip, err := fetchAndCacheTrip(cmd.Context(), conf, first, last, flags, flagNoCache, *flagHeaded)
 			if err != nil {
 				return err
 			}
