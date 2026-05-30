@@ -40,13 +40,23 @@ func newSharedFreshCmd(flags *rootFlags) *cobra.Command {
 				return printJSONFiltered(cmd.OutOrStdout(), []freshDeck{}, flags)
 			}
 
-			c, _, err := flags.newSvcClient()
-			if err != nil {
-				return err
-			}
-			decks, err := listDecks(cmd.Context(), c, term)
-			if err != nil {
-				return classifyAPIError(err, flags)
+			var decks []svc.SharedDeck
+			if flags.dataSource == "local" {
+				// Offline: read the rows synced into the local `shared` table.
+				local, err := searchSharedLocal(cmd, flags, term, false, false)
+				if err != nil {
+					return err
+				}
+				decks = local
+			} else {
+				c, _, err := flags.newSvcClient()
+				if err != nil {
+					return err
+				}
+				decks, err = listDecks(cmd.Context(), c, term)
+				if err != nil {
+					return classifyAPIError(err, flags)
+				}
 			}
 
 			kept := decks[:0]

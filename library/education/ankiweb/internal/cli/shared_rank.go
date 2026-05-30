@@ -38,13 +38,23 @@ func newSharedRankCmd(flags *rootFlags) *cobra.Command {
 				return printJSONFiltered(cmd.OutOrStdout(), []rankedDeck{}, flags)
 			}
 
-			c, _, err := flags.newSvcClient()
-			if err != nil {
-				return err
-			}
-			decks, err := listDecks(cmd.Context(), c, term)
-			if err != nil {
-				return classifyAPIError(err, flags)
+			var decks []svc.SharedDeck
+			if flags.dataSource == "local" {
+				// Offline: rank the rows synced into the local `shared` table.
+				local, err := searchSharedLocal(cmd, flags, term, hasAudio, hasImages)
+				if err != nil {
+					return err
+				}
+				decks = local
+			} else {
+				c, _, err := flags.newSvcClient()
+				if err != nil {
+					return err
+				}
+				decks, err = listDecks(cmd.Context(), c, term)
+				if err != nil {
+					return classifyAPIError(err, flags)
+				}
 			}
 
 			kept := decks[:0]

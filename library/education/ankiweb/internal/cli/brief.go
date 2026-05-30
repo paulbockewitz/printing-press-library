@@ -52,13 +52,23 @@ func newBriefCmd(flags *rootFlags) *cobra.Command {
 				return printJSONFiltered(cmd.OutOrStdout(), briefReport{Term: term, TopByApproval: []briefTopDeck{}}, flags)
 			}
 
-			c, _, err := flags.newSvcClient()
-			if err != nil {
-				return err
-			}
-			decks, err := listDecks(cmd.Context(), c, term)
-			if err != nil {
-				return classifyAPIError(err, flags)
+			var decks []svc.SharedDeck
+			if flags.dataSource == "local" {
+				// Offline: build the digest from the locally synced `shared` table.
+				local, err := searchSharedLocal(cmd, flags, term, false, false)
+				if err != nil {
+					return err
+				}
+				decks = local
+			} else {
+				c, _, err := flags.newSvcClient()
+				if err != nil {
+					return err
+				}
+				decks, err = listDecks(cmd.Context(), c, term)
+				if err != nil {
+					return classifyAPIError(err, flags)
+				}
 			}
 
 			report := briefReport{Term: term, ResultCount: len(decks), TopByApproval: []briefTopDeck{}}
