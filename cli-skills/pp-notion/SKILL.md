@@ -15,7 +15,6 @@ metadata:
         bins: [notion-pp-cli]
         module: github.com/mvanhorn/printing-press-library/library/other/notion/cmd/notion-pp-cli
 ---
-
 <!-- GENERATED FILE — DO NOT EDIT.
      This file is a verbatim mirror of library/productivity/notion/SKILL.md,
      regenerated post-merge by tools/generate-skills/. Hand-edits here are

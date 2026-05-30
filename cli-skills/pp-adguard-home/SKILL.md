@@ -15,7 +15,6 @@ metadata:
         bins: [adguard-home-pp-cli]
         module: github.com/mvanhorn/printing-press-library/library/monitoring/adguard-home/cmd/adguard-home-pp-cli
 ---
-
 <!-- GENERATED FILE — DO NOT EDIT.
      This file is a verbatim mirror of library/monitoring/adguard-home/SKILL.md,
      regenerated post-merge by tools/generate-skills/. Hand-edits here are

@@ -15,7 +15,6 @@ metadata:
         bins: [coffee-goat-pp-cli]
         module: github.com/mvanhorn/printing-press-library/library/food-and-dining/coffee-goat/cmd/coffee-goat-pp-cli
 ---
-
 <!-- GENERATED FILE — DO NOT EDIT.
      This file is a verbatim mirror of library/food-and-dining/coffee-goat/SKILL.md,
      regenerated post-merge by tools/generate-skills/. Hand-edits here are

@@ -15,7 +15,6 @@ metadata:
         bins: [instacart-pp-cli]
         module: github.com/mvanhorn/printing-press-library/library/commerce/instacart/cmd/instacart-pp-cli
 ---
-
 <!-- GENERATED FILE — DO NOT EDIT.
      This file is a verbatim mirror of library/commerce/instacart/SKILL.md,
      regenerated post-merge by tools/generate-skills/. Hand-edits here are

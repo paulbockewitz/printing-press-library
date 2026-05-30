@@ -15,7 +15,6 @@ metadata:
         bins: [clarity-pp-cli]
         module: github.com/mvanhorn/printing-press-library/library/marketing/clarity/cmd/clarity-pp-cli
 ---
-
 <!-- GENERATED FILE — DO NOT EDIT.
      This file is a verbatim mirror of library/marketing/clarity/SKILL.md,
      regenerated post-merge by tools/generate-skills/. Hand-edits here are

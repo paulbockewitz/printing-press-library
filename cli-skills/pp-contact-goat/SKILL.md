@@ -15,7 +15,6 @@ metadata:
         bins: [contact-goat-pp-cli]
         module: github.com/mvanhorn/printing-press-library/library/sales-and-crm/contact-goat/cmd/contact-goat-pp-cli
 ---
-
 <!-- GENERATED FILE — DO NOT EDIT.
      This file is a verbatim mirror of library/sales-and-crm/contact-goat/SKILL.md,
      regenerated post-merge by tools/generate-skills/. Hand-edits here are

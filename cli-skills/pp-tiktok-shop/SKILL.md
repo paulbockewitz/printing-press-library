@@ -15,7 +15,6 @@ metadata:
         bins: [tiktok-shop-pp-cli]
         module: github.com/mvanhorn/printing-press-library/library/commerce/tiktok-shop/cmd/tiktok-shop-pp-cli
 ---
-
 <!-- GENERATED FILE — DO NOT EDIT.
      This file is a verbatim mirror of library/commerce/tiktok-shop/SKILL.md,
      regenerated post-merge by tools/generate-skills/. Hand-edits here are

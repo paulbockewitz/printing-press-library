@@ -11,7 +11,6 @@ metadata:
       bins:
         - art-goat-pp-cli
 ---
-
 <!-- GENERATED FILE — DO NOT EDIT.
      This file is a verbatim mirror of library/media-and-entertainment/art-goat/SKILL.md,
      regenerated post-merge by tools/generate-skills/. Hand-edits here are

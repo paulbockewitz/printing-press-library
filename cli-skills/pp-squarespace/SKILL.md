@@ -1,7 +1,7 @@
 ---
 name: pp-squarespace
 description: "Squarespace Commerce plus browser-backed account domains, DNS, email forwarding, and billing reads."
-author: "zayd"
+author: "Zayd"
 license: "Apache-2.0"
 argument-hint: "<command> [args] | install cli|mcp"
 allowed-tools: "Read Bash"
@@ -11,7 +11,6 @@ metadata:
       bins:
         - squarespace-pp-cli
 ---
-
 <!-- GENERATED FILE — DO NOT EDIT.
      This file is a verbatim mirror of library/commerce/squarespace/SKILL.md,
      regenerated post-merge by tools/generate-skills/. Hand-edits here are

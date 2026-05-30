@@ -15,7 +15,6 @@ metadata:
         bins: [x-twitter-pp-cli]
         module: github.com/mvanhorn/printing-press-library/library/social-and-messaging/x-twitter/cmd/x-twitter-pp-cli
 ---
-
 <!-- GENERATED FILE — DO NOT EDIT.
      This file is a verbatim mirror of library/social-and-messaging/x-twitter/SKILL.md,
      regenerated post-merge by tools/generate-skills/. Hand-edits here are
