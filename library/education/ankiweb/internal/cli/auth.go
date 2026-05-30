@@ -397,9 +397,6 @@ func discoverChromeProfiles(domain string) ([]chromeProfile, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := exec.LookPath("sqlite3"); err != nil {
-		return nil, fmt.Errorf("sqlite3 not found")
-	}
 
 	entries, err := os.ReadDir(dataDir)
 	if err != nil {
