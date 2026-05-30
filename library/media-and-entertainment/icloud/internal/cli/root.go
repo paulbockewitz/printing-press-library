@@ -1,4 +1,4 @@
-// Copyright 2026 mvanhorn. Licensed under Apache-2.0. See LICENSE.
+// Copyright 2026 Matias Sanchez Moises and contributors. Licensed under Apache-2.0. See LICENSE.
 
 package cli
 
@@ -11,12 +11,12 @@ import (
 const version = "0.1.0"
 
 type rootFlags struct {
-	asJSON          bool
-	compact         bool
-	noColor         bool
-	agent           bool
-	libraryPath     string
-	messagesDBPath  string
+	asJSON         bool
+	compact        bool
+	noColor        bool
+	agent          bool
+	libraryPath    string
+	messagesDBPath string
 }
 
 func Execute() error {
@@ -58,6 +58,7 @@ Pipe any command for automatic JSON output.`,
 
 	root.AddCommand(newPhotosCmd(f))
 	root.AddCommand(newMessagesCmd(f))
+	root.AddCommand(newContactsCmd(f))
 	root.AddCommand(newDoctorCmd(f))
 
 	return root.Execute()

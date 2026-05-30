@@ -1,4 +1,4 @@
-// Copyright 2026 mvanhorn. Licensed under Apache-2.0. See LICENSE.
+// Copyright 2026 Matt Van Horn and contributors. Licensed under Apache-2.0. See LICENSE.
 // PATCH: Add one-shot publishing bundle export for clips.
 
 package cli
@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/mvanhorn/printing-press-library/library/media-and-entertainment/suno/internal/cliutil"
+	"github.com/spf13/cobra"
 )
 
 // PATCH(greptile #577 P2): bound CDN downloads. Stale or hung URLs would block

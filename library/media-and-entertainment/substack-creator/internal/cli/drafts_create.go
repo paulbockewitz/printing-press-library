@@ -1,4 +1,4 @@
-// Copyright 2026 jimpresting. Licensed under Apache-2.0. See LICENSE.
+// Copyright 2026 JimPresting and contributors. Licensed under Apache-2.0. See LICENSE.
 // Hand-extended by Phase 5+ live discovery against the publication subdomain.
 // Supports the full Substack draft field set so AI agents can author drafts
 // (title, subtitle, body, audience, bylines, SEO, cover image, type, paywall,
@@ -146,10 +146,10 @@ Second paragraph."
   echo '{"draft_title":"X","draft_bylines":[{"id":1234}], ...}' | \
     substack-creator-pp-cli drafts create --subdomain mypub-paid --stdin`,
 		Annotations: map[string]string{
-			"pp:endpoint":   "drafts.create",
-			"pp:method":     "POST",
-			"pp:path":       "/drafts",
-			"pp:novel-ext":  "full-field-coverage",
+			"pp:endpoint":  "drafts.create",
+			"pp:method":    "POST",
+			"pp:path":      "/drafts",
+			"pp:novel-ext": "full-field-coverage",
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !stdinBody {

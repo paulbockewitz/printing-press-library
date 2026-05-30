@@ -1,4 +1,4 @@
-// Copyright 2026 h179922. Licensed under Apache-2.0. See LICENSE.
+// Copyright 2026 H179922 and contributors. Licensed under Apache-2.0. See LICENSE.
 
 package store
 
@@ -30,7 +30,7 @@ func TestUpsertTyped_ColumnOrdering(t *testing.T) {
 		table      string               // typed table name
 		fkColumn   string               // FK or extra column to verify (empty if none to check)
 		fkValue    string               // expected FK value
-		hasDataCol bool                  // whether to verify the data column
+		hasDataCol bool                 // whether to verify the data column
 	}
 
 	const testID = "test-upsert-001"
