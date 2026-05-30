@@ -83,7 +83,7 @@ func newWatchCmd(flags *rootFlags) *cobra.Command {
 			}
 			hadSnapshot := len(prior) > 0
 
-			var changes []watchChange
+			changes := make([]watchChange, 0)
 			for _, d := range decks {
 				old, seen := prior[d.ID]
 				switch {
