@@ -71,7 +71,10 @@ func newWatchCmd(flags *rootFlags) *cobra.Command {
 
 			rt := watchResourceType(term)
 			prior := map[string]svc.SharedDeck{}
-			rows, _ := db.List(rt, 100000)
+			rows, err := db.List(rt, 100000)
+			if err != nil {
+				return fmt.Errorf("reading watch snapshot for %q: %w", term, err)
+			}
 			for _, raw := range rows {
 				var d svc.SharedDeck
 				if json.Unmarshal(raw, &d) == nil {
@@ -98,7 +101,9 @@ func newWatchCmd(flags *rootFlags) *cobra.Command {
 			// Update the snapshot to the current set.
 			for _, d := range decks {
 				raw, _ := json.Marshal(d)
-				_ = db.Upsert(rt, d.ID, raw)
+				if err := db.Upsert(rt, d.ID, raw); err != nil {
+					return fmt.Errorf("updating watch snapshot for %q: %w", term, err)
+				}
 			}
 
 			return printJSONFiltered(cmd.OutOrStdout(), changes, flags)
