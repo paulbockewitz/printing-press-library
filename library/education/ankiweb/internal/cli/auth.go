@@ -169,7 +169,7 @@ profile by name when the installed backend supports it.`,
 				return configErr(err)
 			}
 
-			if err := cfg.SaveTokens("", "", cookies, "", time.Time{}); err != nil {
+			if err := cfg.SaveCookies(cookies); err != nil {
 				return configErr(fmt.Errorf("saving cookies: %w", err))
 			}
 

@@ -143,6 +143,18 @@ func (c *Config) SaveTokens(clientID, clientSecret, accessToken, refreshToken st
 	return c.save()
 }
 
+// SaveCookies persists a browser session cookie string to AnkiwebCookies
+// (TOML "cookies") — the field the svc client reads. Browser login captures a
+// Cookie header, not a bearer token, so it must not go through SaveTokens
+// (which writes access_token). Clearing the bearer fields keeps a single source
+// of truth and prevents a stale token from masking or overriding the cookies.
+func (c *Config) SaveCookies(cookies string) error {
+	c.AnkiwebCookies = cookies
+	c.AuthHeaderVal = ""
+	c.AccessToken = ""
+	return c.save()
+}
+
 func (c *Config) ClearTokens() error {
 	// AuthHeader() falls back to the env-var-derived fields when AuthHeaderVal
 	// and AccessToken are empty, so dropping the working credential requires
