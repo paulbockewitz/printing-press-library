@@ -3,11 +3,9 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/mvanhorn/printing-press-library/library/education/ankiweb/internal/cliutil"
-	"github.com/mvanhorn/printing-press-library/library/education/ankiweb/internal/store"
 	"github.com/mvanhorn/printing-press-library/library/education/ankiweb/internal/svc"
 	"github.com/spf13/cobra"
 )
@@ -38,23 +36,9 @@ func newSharedSearchCmd(flags *rootFlags) *cobra.Command {
 				return printJSONFiltered(cmd.OutOrStdout(), []svc.SharedDeck{}, flags)
 			}
 
-			var decks []svc.SharedDeck
-			if flags.dataSource == "local" {
-				// Offline: FTS the rows synced into the local `shared` table.
-				decks, err := searchSharedLocal(cmd, flags, term, hasAudio, hasImages)
-				if err != nil {
-					return err
-				}
-				return printJSONFiltered(cmd.OutOrStdout(), decks, flags)
-			}
-
-			c, _, err := flags.newSvcClient()
+			decks, err := flags.loadSharedDecks(cmd, term)
 			if err != nil {
 				return err
-			}
-			decks, err = listDecks(cmd.Context(), c, term)
-			if err != nil {
-				return classifyAPIError(err, flags)
 			}
 
 			filtered := decks[:0]
@@ -75,37 +59,4 @@ func newSharedSearchCmd(flags *rootFlags) *cobra.Command {
 	cmd.Flags().BoolVar(&hasImages, "has-images", false, "Keep only decks that include images")
 
 	return cmd
-}
-
-// searchSharedLocal full-text searches the locally synced `shared` table,
-// applying the same audio/image filters as the live path. Used under
-// --data-source local for offline operation.
-func searchSharedLocal(cmd *cobra.Command, flags *rootFlags, term string, hasAudio, hasImages bool) ([]svc.SharedDeck, error) {
-	dbPath := defaultDBPath("ankiweb-pp-cli")
-	db, err := store.OpenWithContext(cmd.Context(), dbPath)
-	if err != nil {
-		return nil, fmt.Errorf("opening local store: %w", err)
-	}
-	defer db.Close()
-
-	hintIfUnsynced(cmd, db, "shared")
-	rows, err := db.SearchShared(term, 1000)
-	if err != nil {
-		return nil, fmt.Errorf("searching local store: %w", err)
-	}
-	out := make([]svc.SharedDeck, 0, len(rows))
-	for _, raw := range rows {
-		var d svc.SharedDeck
-		if json.Unmarshal(raw, &d) != nil {
-			continue
-		}
-		if hasAudio && d.Audio <= 0 {
-			continue
-		}
-		if hasImages && d.Images <= 0 {
-			continue
-		}
-		out = append(out, d)
-	}
-	return out, nil
 }
