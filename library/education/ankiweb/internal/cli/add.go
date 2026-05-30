@@ -53,12 +53,9 @@ func newNotesAddCmd(flags *rootFlags) *cobra.Command {
 				return printJSONFiltered(cmd.OutOrStdout(), map[string]any{"status": "ok", "verify": true}, flags)
 			}
 
-			c, cfg, err := flags.newSvcClient()
+			c, _, err := flags.newEditorClient()
 			if err != nil {
 				return err
-			}
-			if strings.TrimSpace(cfg.AnkiwebCookies) == "" {
-				return authErr(errAuth())
 			}
 
 			// Fast path: when --deck and --type are already numeric IDs and field
@@ -93,7 +90,7 @@ func newNotesAddCmd(flags *rootFlags) *cobra.Command {
 				req := svc.BuildAddNoteRequest(ntIDFast, dkIDFast, args, tags)
 				if _, status, err := c.PostBytes(cmd.Context(), "/svc/editor/add-or-update", req); err != nil {
 					if status == http.StatusForbidden || status == http.StatusUnauthorized {
-						return authErr(errAuth())
+						return authErr(errAuthEditor())
 					}
 					return classifyAPIError(err, flags)
 				}
@@ -105,7 +102,7 @@ func newNotesAddCmd(flags *rootFlags) *cobra.Command {
 			data, status, err := c.PostBytes(cmd.Context(), "/svc/editor/get-info-for-adding", nil)
 			if err != nil {
 				if status == http.StatusForbidden || status == http.StatusUnauthorized {
-					return authErr(errAuth())
+					return authErr(errAuthEditor())
 				}
 				return classifyAPIError(err, flags)
 			}
@@ -155,7 +152,7 @@ func newNotesAddCmd(flags *rootFlags) *cobra.Command {
 
 			if _, status, err := c.PostBytes(cmd.Context(), "/svc/editor/add-or-update", req); err != nil {
 				if status == http.StatusForbidden || status == http.StatusUnauthorized {
-					return authErr(errAuth())
+					return authErr(errAuthEditor())
 				}
 				return classifyAPIError(err, flags)
 			}

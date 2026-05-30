@@ -57,6 +57,9 @@ func Load(configPath string) (*Config, error) {
 		cfg.AnkiwebCookies = v
 		cfg.AuthSource = "env:ANKIWEB_COOKIES"
 	}
+	// AnkiWeb issues a separate session cookie per domain. The editor endpoints
+	// (/svc/editor/*) are served from ankiuser.net and reject the ankiweb.net
+	// cookie, so they need this distinct credential — see newEditorClient.
 	if v := os.Getenv("ANKIUSER_COOKIES"); v != "" {
 		cfg.AnkiuserCookies = v
 	}

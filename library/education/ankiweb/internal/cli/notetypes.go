@@ -4,7 +4,6 @@ package cli
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/mvanhorn/printing-press-library/library/education/ankiweb/internal/cliutil"
 	"github.com/mvanhorn/printing-press-library/library/education/ankiweb/internal/svc"
@@ -25,17 +24,14 @@ func newNoteTypesCmd(flags *rootFlags) *cobra.Command {
 			if cliutil.IsVerifyEnv() {
 				return printJSONFiltered(cmd.OutOrStdout(), svc.AddInfo{}, flags)
 			}
-			c, cfg, err := flags.newSvcClient()
+			c, _, err := flags.newEditorClient()
 			if err != nil {
 				return err
-			}
-			if strings.TrimSpace(cfg.AnkiwebCookies) == "" {
-				return authErr(errAuth())
 			}
 			data, status, err := c.PostBytes(cmd.Context(), "/svc/editor/get-info-for-adding", nil)
 			if err != nil {
 				if status == http.StatusForbidden || status == http.StatusUnauthorized {
-					return authErr(errAuth())
+					return authErr(errAuthEditor())
 				}
 				return classifyAPIError(err, flags)
 			}

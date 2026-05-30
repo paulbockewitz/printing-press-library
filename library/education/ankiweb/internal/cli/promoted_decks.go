@@ -16,6 +16,15 @@ const authHint = "no AnkiWeb session cookie configured.\n" +
 	"      Set it with: export ANKIWEB_COOKIES='ankiweb=<your-session-cookie>'\n" +
 	"      (copy the 'ankiweb' cookie from your logged-in browser session, or run 'ankiweb-pp-cli auth login --chrome')."
 
+// authHintEditor guides the user to the ankiuser.net session cookie that the
+// editor endpoints (notetypes, notes add) require. AnkiWeb issues a separate
+// session per domain, so the ankiweb.net cookie does not work here.
+const authHintEditor = "no ankiuser.net session cookie configured.\n" +
+	"      The editor (notetypes, notes add) runs on ankiuser.net, which uses a different\n" +
+	"      session cookie than ankiweb.net.\n" +
+	"      Set it with: export ANKIUSER_COOKIES='ankiweb=<your-ankiuser.net-session-cookie>'\n" +
+	"      (open https://ankiuser.net while logged in, then copy that domain's 'ankiweb' cookie)."
+
 // newDecksCmd is the `decks` parent command grouping deck commands
 // (currently `decks list`).
 func newDecksCmd(flags *rootFlags) *cobra.Command {
@@ -73,6 +82,17 @@ func errAuth() error {
 	return &authHintError{}
 }
 
-type authHintError struct{}
+// errAuthEditor reports a missing ankiuser.net session cookie for the editor
+// commands (notetypes, notes add).
+func errAuthEditor() error {
+	return &authHintError{editor: true}
+}
 
-func (e *authHintError) Error() string { return authHint }
+type authHintError struct{ editor bool }
+
+func (e *authHintError) Error() string {
+	if e.editor {
+		return authHintEditor
+	}
+	return authHint
+}

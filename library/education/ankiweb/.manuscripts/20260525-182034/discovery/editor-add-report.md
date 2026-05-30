@@ -20,6 +20,9 @@ Captured read-only from the logged-in ankiuser.net/add page. The Add submission 
 - Decks: a list of the account's decks, each with an account-specific numeric id and a name; one is flagged DEFAULT. (Specific deck names/ids redacted — they are personal account data.)
 - The default note type's field names are returned in field 5 (e.g. Front, Back for a Basic type).
 
+## Auth (per-domain session cookie)
+- These editor endpoints are served from **ankiuser.net** and authenticate with **that domain's** `ankiweb` session cookie. AnkiWeb issues a **separate** session cookie per domain: the ankiweb.net cookie (used by `decks/*`, `shared/*`) is **rejected by the editor with HTTP 404** (the server uses 403 for "not logged in", so a 404 here means "authenticated, wrong session"). The CLI must send the ankiuser.net cookie (`ANKIUSER_COOKIES`) for editor commands and must NOT fall back to the ankiweb.net cookie. Verified live 2026-05-30.
+
 ## Implications for the CLI
 - `add` builds the add-or-update request: ordered field values (positional `add "front" "back"` or repeatable `--field`), tags, and a target `{notetype_id, deck_id}` resolved from get-info by name.
 - Default note type + deck come from get-info f4/f3. `--deck`/`--type` override by name (resolve to id).

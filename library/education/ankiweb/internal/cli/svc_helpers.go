@@ -25,15 +25,20 @@ func (f *rootFlags) newSvcClient() (*svc.Client, *config.Config, error) {
 	return svc.New(cfg.BaseURL, cfg.AnkiwebCookies, f.timeout, f.rateLimit), cfg, nil
 }
 
-// newAnkiuserClient returns a svc.Client pointed at ankiuser.net.
-// It uses ANKIUSER_COOKIES when set, otherwise falls back to ANKIWEB_COOKIES.
-// All editor and study endpoints (/svc/editor/*, /svc/study/*) live on ankiuser.net.
-func (f *rootFlags) newAnkiuserClient(cfg *config.Config) *svc.Client {
-	cookies := cfg.AnkiuserCookies
-	if cookies == "" {
-		cookies = cfg.AnkiwebCookies
+// newEditorClient builds a svc.Client for AnkiWeb's editor endpoints
+// (/svc/editor/*). These are served from ankiuser.net and authenticate with
+// that domain's session cookie, which is distinct from the ankiweb.net cookie
+// (AnkiWeb issues a separate session per domain). It deliberately does NOT fall
+// back to the ankiweb.net cookie — the editor rejects it with an HTTP 404.
+func (f *rootFlags) newEditorClient() (*svc.Client, *config.Config, error) {
+	cfg, err := config.Load(f.configPath)
+	if err != nil {
+		return nil, nil, configErr(err)
 	}
-	return svc.New("https://ankiuser.net", cookies, f.timeout, f.rateLimit)
+	if strings.TrimSpace(cfg.AnkiuserCookies) == "" {
+		return nil, cfg, authErr(errAuthEditor())
+	}
+	return svc.New("https://ankiuser.net", cfg.AnkiuserCookies, f.timeout, f.rateLimit), cfg, nil
 }
 
 // listDecks fetches and decodes the public shared-deck catalog for term.

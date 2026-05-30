@@ -109,6 +109,8 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 
 AnkiWeb uses a session cookie, not an API key. Run `auth login --chrome` to import your logged-in ankiweb.net session, or set ANKIWEB_COOKIES. Public shared-deck search and info need no login.
 
+The editor commands (`notetypes`, `notes add`) run on **ankiuser.net**, which AnkiWeb authenticates with a **separate** session cookie from ankiweb.net. Set it via `ANKIUSER_COOKIES` (or the config `ankiuser_cookies` key): open `https://ankiuser.net` while logged in and copy that domain's `ankiweb` cookie. The ankiweb.net cookie does not work for these commands (the editor returns HTTP 404).
+
 ## Quick Start
 
 ```bash
@@ -299,7 +301,8 @@ Environment variables:
 
 | Name | Kind | Required | Description |
 | --- | --- | --- | --- |
-| `ANKIWEB_COOKIES` | per_call | Yes | Set to your API credential. |
+| `ANKIWEB_COOKIES` | per_call | Yes | ankiweb.net session cookie (`ankiweb=…`). Used by all commands except the editor. |
+| `ANKIUSER_COOKIES` | per_call | For editor | ankiuser.net session cookie, required by `notetypes` and `notes add`. Distinct from `ANKIWEB_COOKIES`. |
 
 ## Troubleshooting
 **Authentication errors (exit code 4)**
@@ -311,6 +314,7 @@ Environment variables:
 
 ### API-specific
 - **decks list returns 403 / not authenticated** — Run `ankiweb-pp-cli auth login --chrome` to import your ankiweb.net session cookie, or set ANKIWEB_COOKIES.
+- **notetypes / notes add say "no ankiuser.net session cookie configured"** — These run on ankiuser.net, which needs a separate cookie. Open `https://ankiuser.net` while logged in, copy that domain's `ankiweb` cookie, and set `ANKIUSER_COOKIES='ankiweb=…'`.
 - **shared download fails with a token error** — Deck download requires a signed token AnkiWeb mints in-browser; this is a known limitation — download the deck from ankiweb.net directly for now.
 - **search returns nothing** — An empty search term returns no results; provide a keyword, e.g. `shared search spanish`.
 
