@@ -62,10 +62,14 @@ func runSharedSync(cmd *cobra.Command, flags *rootFlags, dbPath string, terms []
 			_ = db.Upsert(snapshot, d.ID, raw)
 			stored++
 		}
-		_ = db.SaveSyncState("shared", "", stored)
 		total += stored
 		fmt.Fprintf(w, `{"event":"sync_complete","resource":"shared","search":%q,"total":%d}`+"\n", term, stored)
 	}
+
+	// Persist the cumulative total once, after all terms. A per-term call would
+	// overwrite the single PRIMARY KEY(resource_type) row in sync_state, leaving
+	// total_count reflecting only the last term instead of the sum.
+	_ = db.SaveSyncState("shared", "", total)
 
 	fmt.Fprintf(w, `{"event":"sync_summary","total_records":%d,"resources":%d}`+"\n", total, len(terms))
 	return nil
