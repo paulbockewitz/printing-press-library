@@ -4,13 +4,13 @@
 package cli
 
 import (
-	"github.com/mvanhorn/printing-press-library/library/education/ankiweb/internal/cliutil"
-	"github.com/mvanhorn/printing-press-library/library/education/ankiweb/internal/config"
 	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/gorilla/websocket"
+	"github.com/mvanhorn/printing-press-library/library/education/ankiweb/internal/cliutil"
+	"github.com/mvanhorn/printing-press-library/library/education/ankiweb/internal/config"
 	"github.com/spf13/cobra"
 	"io"
 	"net/http"
