@@ -4,11 +4,8 @@
 package cli
 
 import (
-	"github.com/mvanhorn/printing-press-library/library/travel/delta-trip/internal/cliutil"
-	"github.com/mvanhorn/printing-press-library/library/travel/delta-trip/internal/store"
 	"encoding/json"
 	"fmt"
-	"github.com/spf13/cobra"
 	"net/url"
 	"os"
 	"regexp"
@@ -17,6 +14,10 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/mvanhorn/printing-press-library/library/travel/delta-trip/internal/cliutil"
+	"github.com/mvanhorn/printing-press-library/library/travel/delta-trip/internal/store"
+	"github.com/spf13/cobra"
 )
 
 // unresolvedPathKeyRE matches `{key}` placeholders left in a sync path

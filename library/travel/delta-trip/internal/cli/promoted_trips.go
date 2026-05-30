@@ -49,6 +49,7 @@ func newTripsPromotedCmd(flags *rootFlags) *cobra.Command {
 // newTripsGetCmd is the explicit `trips get` subcommand.
 func newTripsGetCmd(flags *rootFlags) *cobra.Command {
 	var flagNoCache bool
+	var flagHeaded bool
 	cmd := &cobra.Command{
 		Use:     "get <confirmation> <first-name> <last-name>",
 		Short:   "Get trip details by confirmation number",
@@ -56,7 +57,7 @@ func newTripsGetCmd(flags *rootFlags) *cobra.Command {
 		Args:    cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			conf, first, last := strings.ToUpper(args[0]), strings.ToUpper(args[1]), strings.ToUpper(args[2])
-			trip, err := fetchAndCacheTrip(cmd.Context(), conf, first, last, flags, flagNoCache, false)
+			trip, err := fetchAndCacheTrip(cmd.Context(), conf, first, last, flags, flagNoCache, flagHeaded)
 			if err != nil {
 				return err
 			}
@@ -70,6 +71,7 @@ func newTripsGetCmd(flags *rootFlags) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&flagNoCache, "no-cache", false, "Bypass local cache and fetch live from delta.com")
+	cmd.Flags().BoolVar(&flagHeaded, "headed", false, "Use a visible Chrome window (default: headless; use if bot detection blocks headless)")
 	return cmd
 }
 
