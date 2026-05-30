@@ -54,7 +54,9 @@ func newAuthLoginCmd(flags *rootFlags) *cobra.Command {
 		Short: "Authenticate with the API",
 		Long: `Authenticate using your browser session.
 
-Use --chrome to read cookies from Chrome for ankiweb.net.
+Use --chrome to read cookies from Chrome for ankiweb.net. It also makes a
+best-effort attempt to capture the ankiuser.net session cookie, which the editor
+commands (notetypes, notes add) require — a different per-domain session cookie.
 Use --browser as an alias for --chrome.
 Requires a cookie extraction tool (pycookiecheat, cookies, or cookie-scoop-cli).
 
@@ -90,6 +92,7 @@ profile by name when the installed backend supports it.`,
 			// through — the legacy chain may succeed if persistent cookies
 			// are already on disk.
 			var cookies string
+			profileDir := ""
 			fromPressAuth := false
 			if pressAuthPath, err := exec.LookPath("press-auth"); err == nil {
 				paCookies, paErr := tryPressAuth(pressAuthPath, domain)
@@ -130,7 +133,6 @@ profile by name when the installed backend supports it.`,
 				}
 
 				// Step 2: Resolve which Chrome profile to use when the backend can honor it
-				profileDir := ""
 				if cookieToolSupportsProfiles(tool.name) {
 					profileDir, err = resolveChromeProfile(w, cmd.InOrStdin(), domain, profileFlag)
 					if err != nil {
@@ -176,6 +178,22 @@ profile by name when the installed backend supports it.`,
 			count := len(strings.Split(cookies, ";"))
 			fmt.Fprintf(w, "%s Found %d cookies for %s\n", green("OK"), count, domain)
 			fmt.Fprintf(w, "Session saved to %s\n", cfg.Path)
+
+			// Best-effort: also capture the ankiuser.net session cookie, which the
+			// editor commands (notetypes, notes add) require. AnkiWeb uses a separate
+			// per-domain session, so this is a different cookie than the one above. A
+			// missing ankiuser.net session is common (the user may never have opened
+			// the web editor), so failure here is a warning, not an error.
+			if uc, ucErr := tryCaptureAnkiuserCookies(w, cmd.InOrStdin(), profileDir, profileFlag); ucErr == nil && uc != "" {
+				if err := cfg.SaveAnkiuserCookies(uc); err != nil {
+					return configErr(fmt.Errorf("saving ankiuser cookies: %w", err))
+				}
+				fmt.Fprintf(w, "%s Also captured ankiuser.net session (for notetypes / notes add).\n", green("OK"))
+			} else {
+				fmt.Fprintln(w, yellow("Note")+": no ankiuser.net session captured. The editor commands")
+				fmt.Fprintln(w, "      (notetypes, notes add) need it — open https://ankiuser.net while logged")
+				fmt.Fprintln(w, "      in and re-run, or set ANKIUSER_COOKIES='ankiweb=<ankiuser.net cookie>'.")
+			}
 			return nil
 		},
 	}
@@ -185,6 +203,33 @@ profile by name when the installed backend supports it.`,
 	cmd.Flags().StringVar(&profileFlag, "profile", "", "Chrome profile name (e.g. \"Work\", \"Personal\")")
 	return cmd
 }
+
+// tryCaptureAnkiuserCookies makes a best-effort attempt to read the ankiuser.net
+// session cookie from the user's browser, reusing the same extraction backends as
+// the primary ankiweb.net capture. knownProfileDir is the Chrome profile already
+// resolved for ankiweb.net (reused to avoid a second profile prompt); pass "" if
+// none was resolved. Errors are returned for the caller to downgrade to a warning.
+func tryCaptureAnkiuserCookies(w io.Writer, in io.Reader, knownProfileDir, profileFlag string) (string, error) {
+	const domain = "ankiuser.net"
+	if pressAuthPath, err := exec.LookPath("press-auth"); err == nil {
+		if c, paErr := tryPressAuth(pressAuthPath, domain); paErr == nil && c != "" {
+			return c, nil
+		}
+	}
+	tool, err := detectCookieTool()
+	if err != nil {
+		return "", err
+	}
+	profileDir := knownProfileDir
+	if profileDir == "" && cookieToolSupportsProfiles(tool.name) {
+		profileDir, err = resolveChromeProfile(w, in, domain, profileFlag)
+		if err != nil {
+			return "", err
+		}
+	}
+	return extractCookies(tool, domain, profileDir)
+}
+
 func cookieToolSupportsProfiles(tool string) bool {
 	switch tool {
 	case "pycookiecheat", "cookie-scoop":

@@ -158,6 +158,15 @@ func (c *Config) SaveCookies(cookies string) error {
 	return c.save()
 }
 
+// SaveAnkiuserCookies persists the ankiuser.net session cookie (TOML
+// "ankiuser_cookies"), used by the editor commands (notetypes, notes add). It
+// leaves the ankiweb.net credential untouched — the two are separate per-domain
+// sessions.
+func (c *Config) SaveAnkiuserCookies(cookies string) error {
+	c.AnkiuserCookies = cookies
+	return c.save()
+}
+
 func (c *Config) ClearTokens() error {
 	// AuthHeader() falls back to the env-var-derived fields when AuthHeaderVal
 	// and AccessToken are empty, so dropping the working credential requires
