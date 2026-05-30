@@ -6,6 +6,7 @@ package cli
 import (
 	"bufio"
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"github.com/gorilla/websocket"
@@ -13,6 +14,7 @@ import (
 	"github.com/mvanhorn/printing-press-library/library/education/ankiweb/internal/config"
 	"github.com/spf13/cobra"
 	"io"
+	_ "modernc.org/sqlite"
 	"net/http"
 	"os"
 	"os/exec"
@@ -466,7 +468,8 @@ func readProfileDisplayName(prefsPath string) string {
 }
 
 // countCookiesForDomain copies the Cookies DB (plus WAL/SHM) to temp and counts matching rows.
-// Uses sqlite3 when available; host_key is plaintext so no decryption is needed.
+// host_key is plaintext so no decryption is needed. The count is a parameterized query so a
+// domain containing SQL metacharacters cannot alter it.
 func countCookiesForDomain(cookiesDB, domainPattern string) int {
 	tmpFile, err := os.CreateTemp("", "cookies-probe-*.db")
 	if err != nil {
@@ -486,14 +489,16 @@ func countCookiesForDomain(cookiesDB, domainPattern string) int {
 	_ = copyFileIfExists(cookiesDB+"-wal", tmpPath+"-wal")
 	_ = copyFileIfExists(cookiesDB+"-shm", tmpPath+"-shm")
 
-	query := fmt.Sprintf("SELECT COUNT(*) FROM cookies WHERE host_key LIKE '%s'", domainPattern)
-	out, err := exec.Command("sqlite3", tmpPath, query).Output()
+	db, err := sql.Open("sqlite", tmpPath+"?_busy_timeout=5000")
 	if err != nil {
 		return 0
 	}
+	defer db.Close()
 
-	count := 0
-	fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &count)
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM cookies WHERE host_key LIKE ?", domainPattern).Scan(&count); err != nil {
+		return 0
+	}
 	return count
 }
 
